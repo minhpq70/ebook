@@ -1,0 +1,15 @@
+# API
+api/venv/
+api/__pycache__/
+api/.env
+
+# Web
+web/node_modules/
+web/.next/
+web/out/
+web/build/
+web/.env.local
+web/.env
+
+# MacOS
+.DS_Store

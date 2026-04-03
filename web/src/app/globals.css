@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+:root {
+  --bg-primary: #0f1117;
+  --bg-secondary: #1a1d27;
+  --bg-card: #1e2130;
+  --accent: #6c63ff;
+  --accent-light: #8b85ff;
+  --text-primary: #e8eaf0;
+  --text-muted: #8890a4;
+  --border: #2d3148;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Reusable component classes */
+.card {
+  border-radius: 1rem;
+  border: 1px solid #2d3148;
+  background-color: #1e2130;
+  padding: 1.5rem;
+  transition: all 0.2s;
+}
+.card:hover {
+  border-color: rgba(108, 99, 255, 0.4);
+  box-shadow: 0 8px 30px rgba(108, 99, 255, 0.05);
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 0.75rem;
+  background-color: #6c63ff;
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: white;
+  transition: all 0.2s;
+  cursor: pointer;
+  border: none;
+}
+.btn-primary:hover {
+  background-color: #8b85ff;
+  box-shadow: 0 8px 20px rgba(108, 99, 255, 0.2);
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 0.75rem;
+  border: 1px solid #2d3148;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  color: #8890a4;
+  transition: all 0.2s;
+  cursor: pointer;
+  background: transparent;
+  text-decoration: none;
+}
+.btn-ghost:hover {
+  border-color: rgba(108, 99, 255, 0.4);
+  color: white;
+}
+
+.input {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid #2d3148;
+  background-color: #0f1117;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: #e8eaf0;
+  outline: none;
+  transition: all 0.2s;
+}
+.input::placeholder { color: #8890a4; }
+.input:focus {
+  border-color: #6c63ff;
+  box-shadow: 0 0 0 2px rgba(108, 99, 255, 0.2);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 0.125rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.badge-ready  { background: rgba(52, 211, 153, 0.1); color: #34d399; }
+.badge-processing { background: rgba(251, 191, 36, 0.1); color: #fbbf24; }
+.badge-error  { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+
+/* Utility overrides needed due to Tailwind v4 inline syntax */
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
