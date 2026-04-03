@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://ebook-api-7v44.onrender.com/api/v1';
+const API_BASE = 'https://ebook-api-7v44.onrender.com/api/v1';
 
 export interface Book {
   id: string;
