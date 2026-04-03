@@ -149,7 +149,7 @@ def list_books() -> list[dict]:
     supabase = get_supabase()
     result = (
         supabase.table("books")
-        .select("id, title, author, description, cover_url, total_pages, status, created_at")
+        .select("id, title, author, description, language, cover_url, file_path, file_size, total_pages, status, created_at")
         .order("created_at", desc=True)
         .execute()
     )
