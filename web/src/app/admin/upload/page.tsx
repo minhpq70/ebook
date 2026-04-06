@@ -18,7 +18,7 @@ const PHASE_LABELS: Record<UploadPhase, string> = {
 export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [form, setForm] = useState({ title: '', author: '', description: '' });
+  const [form, setForm] = useState({ title: '', author: '', publisher: '', published_year: '', description: '' });
   const [phase, setPhase] = useState<UploadPhase>('idle');
   const [message, setMessage] = useState('');
   const [bookId, setBookId] = useState('');
@@ -86,6 +86,8 @@ export default function UploadPage() {
       const result = await booksAPI.upload(file, {
         title: form.title,
         author: form.author || undefined,
+        publisher: form.publisher || undefined,
+        published_year: form.published_year || undefined,
         description: form.description || undefined,
         language: 'vi',
       });
@@ -101,7 +103,7 @@ export default function UploadPage() {
   const reset = () => {
     setPhase('idle');
     setFile(null);
-    setForm({ title: '', author: '', description: '' });
+    setForm({ title: '', author: '', publisher: '', published_year: '', description: '' });
     setBookId('');
     setMessage('');
   };
@@ -226,6 +228,19 @@ export default function UploadPage() {
                     onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} />
                 </div>
               ))}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                {[
+                  { key: 'publisher', label: 'Nhà xuất bản', placeholder: 'Tên NXB...' },
+                  { key: 'published_year', label: 'Năm XB', placeholder: 'Ví dụ: 2024' },
+                ].map(({ key, label, placeholder }) => (
+                  <div key={key}>
+                    <label style={{ fontSize: '0.875rem', color: '#8890a4', display: 'block', marginBottom: '0.375rem' }}>{label}</label>
+                    <input className="input" placeholder={placeholder}
+                      value={form[key as keyof typeof form]}
+                      onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} />
+                  </div>
+                ))}
+              </div>
               <div>
                 <label style={{ fontSize: '0.875rem', color: '#8890a4', display: 'block', marginBottom: '0.375rem' }}>Mô tả</label>
                 <textarea className="input" rows={3} style={{ resize: 'none' }} placeholder="Mô tả ngắn..."

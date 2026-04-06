@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from models.schemas import BookResponse, BookListResponse, IngestionStatus
 from services import ingestion
+from services.metadata_extractor import extract_metadata_from_pdf
 
 router = APIRouter(prefix="/books", tags=["Books"])
 
@@ -21,6 +22,8 @@ async def upload_book(
     file: UploadFile = File(..., description="File PDF của sách"),
     title: str = Form(..., description="Tiêu đề sách"),
     author: str = Form(None, description="Tác giả"),
+    publisher: str = Form(None, description="Nhà xuất bản"),
+    published_year: str = Form(None, description="Năm xuất bản"),
     description: str = Form(None, description="Mô tả sách"),
     language: str = Form("vi", description="Ngôn ngữ (vi/en)"),
 ):
@@ -35,6 +38,20 @@ async def upload_book(
 
     pdf_bytes = await file.read()
     unique_filename = f"{uuid.uuid4()}_{file.filename}"
+    
+    # Kích hoạt AI nếu có thông số trống
+    is_default_title = (title == file.filename.replace('.pdf', '') or title == file.filename)
+    if is_default_title or not author or not publisher or not published_year:
+        ai_meta = await extract_metadata_from_pdf(pdf_bytes)
+        if ai_meta:
+            if is_default_title and ai_meta.get('title'):
+                title = ai_meta['title']
+            if not author and ai_meta.get('author'):
+                author = ai_meta['author']
+            if not publisher and ai_meta.get('publisher'):
+                publisher = ai_meta['publisher']
+            if not published_year and ai_meta.get('published_year'):
+                published_year = str(ai_meta['published_year'])
 
     # Tạo book record + upload file lên Storage trước (nhanh)
     try:
@@ -43,6 +60,8 @@ async def upload_book(
             filename=unique_filename,
             title=title,
             author=author,
+            publisher=publisher,
+            published_year=published_year,
             description=description,
             language=language,
         )

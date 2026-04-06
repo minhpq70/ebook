@@ -4,6 +4,8 @@ export interface Book {
   id: string;
   title: string;
   author?: string;
+  publisher?: string;
+  published_year?: string;
   description?: string;
   language: string;
   cover_url?: string;
@@ -56,12 +58,14 @@ export const booksAPI = {
 
   upload: async (
     file: File,
-    metadata: { title: string; author?: string; description?: string; language?: string }
+    metadata: { title: string; author?: string; publisher?: string; published_year?: string; description?: string; language?: string }
   ) => {
     const form = new FormData();
     form.append('file', file);
     form.append('title', metadata.title);
     if (metadata.author) form.append('author', metadata.author);
+    if (metadata.publisher) form.append('publisher', metadata.publisher);
+    if (metadata.published_year) form.append('published_year', metadata.published_year);
     if (metadata.description) form.append('description', metadata.description);
     form.append('language', metadata.language || 'vi');
 

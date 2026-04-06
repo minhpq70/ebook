@@ -17,6 +17,8 @@ class BookResponse(BaseModel):
     id: str
     title: str
     author: Optional[str]
+    publisher: Optional[str]
+    published_year: Optional[str]
     description: Optional[str]
     language: str
     cover_url: Optional[str]

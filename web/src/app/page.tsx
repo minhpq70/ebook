@@ -20,7 +20,8 @@ export default function HomePage() {
   const filteredBooks = search.trim()
     ? readyBooks.filter(b =>
         b.title.toLowerCase().includes(search.toLowerCase()) ||
-        b.author?.toLowerCase().includes(search.toLowerCase())
+        b.author?.toLowerCase().includes(search.toLowerCase()) ||
+        b.publisher?.toLowerCase().includes(search.toLowerCase())
       )
     : readyBooks;
 
@@ -90,7 +91,7 @@ export default function HomePage() {
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8890a4]" />
             <input
               className="input pl-11 w-full"
-              placeholder="Tìm kiếm theo tên sách, tác giả..."
+              placeholder="Tìm kiếm theo tên sách, tác giả, NXB..."
               value={search}
               onChange={e => setSearch(e.target.value)}
             />
@@ -127,9 +128,14 @@ function BookCard({ book }: { book: Book }) {
       <div className="h-40 rounded-xl bg-gradient-to-br from-[#6c63ff]/20 to-[#2d3148] flex items-center justify-center mb-4">
         <BookOpen className="w-12 h-12 text-[#6c63ff]/60 group-hover:text-[#6c63ff] transition-colors" />
       </div>
-      <h3 className="font-semibold text-white truncate mb-1">{book.title}</h3>
-      {book.author && <p className="text-sm text-[#8890a4] truncate mb-3">by {book.author}</p>}
-      <div className="flex items-center justify-between">
+      <h3 className="font-semibold text-white truncate mb-1" title={book.title}>{book.title}</h3>
+      {book.author && <p className="text-sm text-[#8890a4] truncate mb-1">bởi <span className="text-[#a5a9b8]">{book.author}</span></p>}
+      {(book.publisher || book.published_year) && (
+        <p className="text-[11px] text-[#6c63ff]/80 truncate mb-3 border border-[#6c63ff]/20 bg-[#6c63ff]/5 rounded w-fit px-1.5 py-0.5">
+          {book.publisher || 'NXB Không rõ'} {book.published_year ? `(${book.published_year})` : ''}
+        </p>
+      )}
+      <div className="flex items-center justify-between mt-auto pt-2">
         <span className="text-xs text-[#8890a4]">
           {book.total_pages ? `${book.total_pages} trang` : 'PDF'}
         </span>

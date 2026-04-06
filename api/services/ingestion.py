@@ -39,6 +39,8 @@ async def create_book_record(
     filename: str,
     title: str,
     author: str | None = None,
+    publisher: str | None = None,
+    published_year: str | None = None,
     description: str | None = None,
     language: str = "vi",
 ) -> str:
@@ -60,6 +62,8 @@ async def create_book_record(
     book_result = supabase.table("books").insert({
         "title": title,
         "author": author,
+        "publisher": publisher,
+        "published_year": published_year,
         "description": description,
         "language": language,
         "file_path": file_path,
@@ -101,10 +105,12 @@ async def upload_and_ingest(
     filename: str,
     title: str,
     author: str | None = None,
+    publisher: str | None = None,
+    published_year: str | None = None,
     description: str | None = None,
     language: str = "vi",
 ) -> str:
-    book_id = await create_book_record(pdf_bytes, filename, title, author, description, language)
+    book_id = await create_book_record(pdf_bytes, filename, title, author, publisher, published_year, description, language)
     await run_ingestion_pipeline(book_id, pdf_bytes)
     return book_id
 
@@ -149,7 +155,7 @@ def list_books() -> list[dict]:
     supabase = get_supabase()
     result = (
         supabase.table("books")
-        .select("id, title, author, description, language, cover_url, file_path, file_size, total_pages, status, created_at")
+        .select("id, title, author, publisher, published_year, description, language, cover_url, file_path, file_size, total_pages, status, created_at")
         .order("created_at", desc=True)
         .execute()
     )
