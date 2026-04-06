@@ -15,16 +15,36 @@ from models.schemas import ChunkInfo, RAGQueryResponse
 # ============================================================
 # System prompts theo task type (tiếng Việt)
 # ============================================================
+# Các từ khoá nhận diện câu hỏi về mục lục
+_TOC_KEYWORDS = [
+    "mục lục", "table of contents", "danh mục", "danh sách chương",
+    "liệt kê chương", "các phần", "các chương", "nội dung chính",
+    "outline", "toc", "cấu trúc sách", "bố cục",
+]
+
+def is_toc_query(query: str) -> bool:
+    """Phát hiện câu hỏi liên quan đến Mục lục."""
+    q = query.lower().strip()
+    return any(kw in q for kw in _TOC_KEYWORDS)
+
+
 SYSTEM_PROMPTS = {
-    "qa": """Bạn là trợ lý đọc sách thông minh, chuyên hỗ trợ độc giả hiểu nội dung sách.
+    "qa": """Bạn là trợ lý đọc sách thông minh, chuyên hỗ trợ độc giả Việt Nam hiểu nội dung sách.
 Nhiệm vụ: Trả lời câu hỏi của người dùng DỰA TRÊN các đoạn trích từ sách được cung cấp.
 
-Quy tắc quan trọng:
+Quy tắc BẮT BUỘC:
+- BẮT BUỘC trả lời bằng tiếng Việt có dấu đầy đủ, KHÔNG BAO GIỜ trả lời bằng tiếng Anh trừ khi người dùng yêu cầu
 - Chỉ sử dụng thông tin trong các đoạn trích bên dưới để trả lời
-- Nếu thông tin không có trong đoạn trích, hãy nói rõ "Thông tin này không có trong đoạn sách được trích dẫn"
-- Trả lời bằng tiếng Việt, rõ ràng và dễ hiểu
+- Nếu thông tin không có trong đoạn trích, hãy nói rõ "Thông tin này không có trong các đoạn sách được trích dẫn"
+- Trả lời rõ ràng, dễ hiểu, sử dụng markdown (bullet points, heading) cho dễ đọc
 - Có thể trích dẫn trực tiếp từ sách khi cần thiết
-- NẾU người dùng yêu cầu "liệt kê" hoặc "đọc mục lục", BẮT BUỘC phải liệt kê đầy đủ toàn bộ chữ thấy được trong chunk mục lục, KHÔNG ĐƯỢC TÓM TẮT hay ẩn bớt.""",
+
+Quy tắc ĐẶC BIỆT về Mục lục:
+- NẾU người dùng hỏi về "mục lục", "danh sách chương", "liệt kê nội dung":
+  + BẮT BUỘC liệt kê TOÀN BỘ các mục từ đầu đến cuối, kèm số trang nếu có
+  + KHÔNG ĐƯỢC tóm tắt, rút gọn, hay viết "và còn nhiều mục khác..."
+  + KHÔNG ĐƯỢC giới hạn số mục hiển thị, phải ghi đầy đủ 100%
+  + Mỗi mục trên 1 dòng riêng, giữ đúng thứ tự trong sách""",
 
     "explain": """Bạn là giáo viên/chuyên gia giải thích văn bản sâu sắc.
 Nhiệm vụ: Giải thích đoạn văn khó hoặc khái niệm phức tạp trong sách cho người đọc hiểu.
@@ -111,6 +131,11 @@ async def run_rag_query(
     system_prompt = SYSTEM_PROMPTS.get(task_type, SYSTEM_PROMPTS["qa"])
     user_message = _build_user_message(query, context, task_type)
 
+    # Tự động tăng max_tokens cho câu hỏi mục lục (cần output dài)
+    max_tokens = settings.openai_max_tokens
+    if is_toc_query(query):
+        max_tokens = max(max_tokens, 8000)
+
     # Gọi OpenAI — chỉ gửi query + chunks, KHÔNG có toàn bộ sách
     client = get_openai()
     response = await client.chat.completions.create(
@@ -119,8 +144,8 @@ async def run_rag_query(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ],
-        max_tokens=settings.openai_max_tokens,
-        temperature=0.3,  # thấp để có câu trả lời ổn định, ít hallucinate
+        max_tokens=max_tokens,
+        temperature=0.2,  # thấp để có câu trả lời ổn định, ít hallucinate
     )
 
     answer = response.choices[0].message.content or ""
@@ -212,6 +237,11 @@ async def stream_rag_query(
     ]
     yield f"data: {json.dumps({'type': 'sources', 'data': sources_payload}, ensure_ascii=False)}\n\n"
 
+    # Tự động tăng max_tokens cho câu hỏi mục lục
+    max_tokens = settings.openai_max_tokens
+    if is_toc_query(query):
+        max_tokens = max(max_tokens, 8000)
+
     # Stream tokens từ OpenAI
     client = get_openai()
     full_answer = ""
@@ -223,8 +253,8 @@ async def stream_rag_query(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ],
-        max_tokens=settings.openai_max_tokens,
-        temperature=0.3,
+        max_tokens=max_tokens,
+        temperature=0.2,
         stream=True,
         stream_options={"include_usage": True},
     )

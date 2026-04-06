@@ -11,6 +11,7 @@ from fastapi.responses import StreamingResponse
 from models.schemas import RAGQueryRequest, RAGQueryResponse
 from services import ingestion, retrieval, rag_engine
 from services.sheets_logger import log_query as sheets_log
+from services.rag_engine import is_toc_query
 
 router = APIRouter(prefix="/rag", tags=["RAG"])
 VALID_TASK_TYPES = {"qa", "explain", "summarize_chapter", "summarize_book", "suggest"}
@@ -44,11 +45,17 @@ async def _get_validated_chunks(req: RAGQueryRequest):
             status_code=400,
             detail=f"Sách chưa sẵn sàng (status: {book.get('status')})"
         )
+
+    # Tự động tăng top_k khi hỏi mục lục / TOC
+    effective_top_k = req.top_k
+    if is_toc_query(req.query):
+        effective_top_k = max(effective_top_k or 5, 20)
+
     try:
         chunks = await retrieval.retrieve_chunks(
             book_id=req.book_id,
             query=req.query,
-            top_k=req.top_k,
+            top_k=effective_top_k,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi retrieval: {str(e)}")

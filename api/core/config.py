@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     openai_api_key: str
     openai_embedding_model: str = "text-embedding-3-small"
     openai_chat_model: str = "gpt-4o-mini"
-    openai_max_tokens: int = 2000
+    openai_max_tokens: int = 4000
 
     # Supabase
     supabase_url: str
@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     # RAG
     rag_chunk_size: int = 500
     rag_chunk_overlap: int = 50
-    rag_top_k: int = 5
+    rag_top_k: int = 8
     rag_vector_weight: float = 0.7
     rag_fts_weight: float = 0.3
 
