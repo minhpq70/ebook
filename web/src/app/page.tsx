@@ -40,11 +40,11 @@ export default function HomePage() {
       b.author?.toLowerCase().includes(search.toLowerCase()) ||
       b.publisher?.toLowerCase().includes(search.toLowerCase()) ||
       b.category?.toLowerCase().includes(search.toLowerCase());
-    const matchCat = !activeCategory || b.category === activeCategory;
+    const matchCat = !activeCategory || (b.category || '').trim().toLowerCase() === activeCategory.trim().toLowerCase();
     return matchSearch && matchCat;
   });
 
-  // Nhóm theo DB Categories
+  // Nhóm theo DB Categories — so khớp mềm dẻo (trim + lowercase)
   const grouped: Record<string, Book[]> = {};
   if (!search.trim() && !activeCategory) {
     const unclassified: Book[] = [];
@@ -53,9 +53,17 @@ export default function HomePage() {
       grouped[cat.name] = [];
     }
 
+    // Tạo map nhanh: tên danh mục (lowercase, trim) → tên gốc trong DB
+    const catLookup: Record<string, string> = {};
+    for (const cat of dbCategories) {
+      catLookup[cat.name.trim().toLowerCase()] = cat.name;
+    }
+
     for (const b of books) {
-      if (b.category && grouped[b.category] !== undefined) {
-        grouped[b.category].push(b);
+      const bookCatKey = (b.category || '').trim().toLowerCase();
+      const matchedCatName = catLookup[bookCatKey];
+      if (bookCatKey && matchedCatName) {
+        grouped[matchedCatName].push(b);
       } else {
         unclassified.push(b);
       }
