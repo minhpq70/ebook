@@ -61,7 +61,7 @@ create table if not exists reading_sessions (
 -- ============================================================
 create table if not exists query_logs (
   id            uuid primary key default gen_random_uuid(),
-  book_id       uuid references books(id),
+  book_id       uuid references books(id) on delete cascade,
   query         text not null,
   task_type     text,              -- qa, explain, summarize_chapter, summarize_book, suggest
   retrieved_chunks integer,

@@ -6,3 +6,6 @@ venv/
 *.egg-info/
 dist/
 .pytest_cache/
+logs/
+uvicorn_test.log
+service_account.json
