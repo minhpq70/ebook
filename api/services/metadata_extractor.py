@@ -82,7 +82,8 @@ def extract_toc(pdf_bytes: bytes) -> str | None:
         doc.close()
         
         if len(found_toc_text) > 50:
-            return f"[HỆ THỐNG] MỤC LỤC CUỐN SÁCH (TABLE OF CONTENTS):\n{found_toc_text[:3000]}"
+            # Lấy tối đa 15000 ký tự (khoảng 10-15 trang) để không vượt quá giới hạn embedding
+            return f"[HỆ THỐNG] MỤC LỤC CUỐN SÁCH (TABLE OF CONTENTS):\n{found_toc_text[:15000]}"
             
         return None
     except Exception as e:
