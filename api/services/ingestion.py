@@ -187,7 +187,7 @@ def list_books() -> list[dict]:
     supabase = get_supabase()
     result = (
         supabase.table("books")
-        .select("id, title, author, publisher, published_year, description, language, cover_url, file_path, file_size, total_pages, status, created_at")
+        .select("*")
         .order("created_at", desc=True)
         .execute()
     )
