@@ -48,20 +48,8 @@ def extract_toc(pdf_bytes: bytes) -> str | None:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         toc = doc.get_toc()
         
-        if toc:
-            doc.close()
-            # toc là một list chứa [level, title, page_number]
-            lines = []
-            lines.append("[HỆ THỐNG] MỤC LỤC CUỐN SÁCH (TABLE OF CONTENTS):")
-            for item in toc:
-                level = item[0]
-                title = item[1]
-                page = item[2]
-                indent = "  " * (level - 1)
-                lines.append(f"{indent}- {title} (Trang {page})")
-            return "\n".join(lines)
-            
-        # NẾU KHÔNG CÓ METADATA TOC, TIẾN HÀNH QUÉT TEXT (15 TRANG ĐẦU, 15 TRANG CUỐI)
+        # Dù có doc.get_toc() hay không, ta CŨNG NÊN quét thêm các trang PDF 
+        # vì nhiều file PDF có get_toc() bị tác giả làm thiếu hoặc hỏng giữa chừng.
         total_pages = len(doc)
         search_pages = list(range(min(15, total_pages)))
         if total_pages > 30:
@@ -77,13 +65,28 @@ def extract_toc(pdf_bytes: bytes) -> str | None:
             
             if in_toc_mode:
                 found_toc_text += text + "\n"
-                # Thường mục lục kéo dài 2-3 trang, cứ gom lại
             
         doc.close()
         
+        final_toc = ""
+        if toc:
+            # Nếu có sẵn metadata TOC, ưu tiên thêm vào trước
+            lines = ["[HỆ THỐNG] MỤC LỤC TÍCH HỢP TỪ METADATA:"]
+            for item in toc:
+                level = item[0]
+                title = item[1]
+                page = item[2]
+                indent = "  " * (level - 1)
+                lines.append(f"{indent}- {title} (Trang {page})")
+            final_toc += "\n".join(lines) + "\n\n"
+            
         if len(found_toc_text) > 50:
-            # Lấy tối đa 15000 ký tự (khoảng 10-15 trang) để không vượt quá giới hạn embedding
-            return f"[HỆ THỐNG] MỤC LỤC CUỐN SÁCH (TABLE OF CONTENTS):\n{found_toc_text[:15000]}"
+            final_toc += f"[HỆ THỐNG] VĂN BẢN QUÉT ĐƯỢC TRÊN TRANG MỤC LỤC CHI TIẾT:\n{found_toc_text[:15000]}"
+            
+        if final_toc.strip() != "":
+            return final_toc
+            
+        return None
             
         return None
     except Exception as e:
