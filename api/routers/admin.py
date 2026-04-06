@@ -6,7 +6,7 @@ Admin Router
 - PATCH /admin/books/{id}   — Chỉnh metadata sách
 """
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from pydantic import BaseModel
 
 from core.auth import require_admin
@@ -104,7 +104,7 @@ def update_book_meta(
 @router.post("/books/{book_id}/reingest")
 async def reingest_book(
     book_id: str,
-    background_tasks: 'BackgroundTasks',
+    background_tasks: BackgroundTasks,
     _: dict = Depends(require_admin),
 ):
     """
@@ -124,9 +124,18 @@ async def reingest_book(
 
     async def _do_reingest():
         try:
-            # Xóa chunks cũ
-            supabase.table("book_chunks").delete().eq("book_id", book_id).execute()
-            print(f"[REINGEST] Đã xóa chunks cũ cho sách {book_id}", flush=True)
+            # Lấy danh sách ID các chunks cũ
+            r = supabase.table("book_chunks").select("id").eq("book_id", book_id).execute()
+            chunk_ids = [row["id"] for row in r.data] if r.data else []
+            
+            # Xóa từng batch để tránh timeout
+            batch_size = 50
+            for i in range(0, len(chunk_ids), batch_size):
+                batch = chunk_ids[i:i+batch_size]
+                supabase.table("book_chunks").delete().in_("id", batch).execute()
+                print(f"[REINGEST] Đã xóa chunks {i+1} - {i+len(batch)} / {len(chunk_ids)}", flush=True)
+            
+            print(f"[REINGEST] Đã xóa hoàn toàn chunks cũ cho sách {book_id}", flush=True)
 
             # Download PDF
             file_path = book.get("file_path")
