@@ -17,43 +17,40 @@ import pytesseract
 
 def _is_garbled_vietnamese(text: str) -> bool:
     """
-    Phát hiện text tiếng Việt bị vỡ encoding.
-    
-    Heuristic: text tiếng Việt hợp lệ chứa nhiều nguyên âm có dấu Unicode chuẩn
-    (ă, â, ê, ô, ơ, ư, đ, và các biến thể có thanh).
-    Nếu text dài mà hầu như KHÔNG có những ký tự này → khả năng bị vỡ encoding.
-    
-    Đồng thời, text bị vỡ thường chứa nhiều ký tự Latin Extended / điều khiển
-    (¡-ÿ range) mà KHÔNG phải ký tự Việt hợp lệ.
+    Phát hiện text tiếng Việt bị vỡ encoding hoặc text không thể đọc được.
     """
     if not text or len(text) < 100:
         return False
-    
-    # Các ký tự tiếng Việt Unicode chuẩn có dấu
+        
     vn_chars = set('àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ'
                    'ÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰỲÝỶỸỴĐ')
     
-    # Đếm ký tự Việt chuẩn
     vn_count = sum(1 for c in text if c in vn_chars)
-    # Đếm ký tự Latin alphabet bình thường
     alpha_count = sum(1 for c in text if c.isalpha())
+    non_space_len = len(text.replace(' ', '').replace('\n', ''))
     
+    # Text rác: alpha_count quá nhỏ so với tổng text (toàn ký tự lạ/symbol)
+    if non_space_len > 100 and alpha_count < non_space_len * 0.1:
+        return True
+        
     if alpha_count < 50:
         return False
-    
-    # Tiếng Việt chuẩn: thường ~10-20% ký tự có dấu
-    # Text bị vỡ: < 2% hoặc 0%
+        
     vn_ratio = vn_count / alpha_count
     
-    # Đếm ký tự "lạ" (Latin Extended range bị map sai)
-    garbled_chars = set('µ¸¶·¹¨»¾¼½©ªÊÇÈÉËÌÐÎÏÑÕÒÓÔÖßãèåæçé¬íêëìî®ïóñò÷ôõöøúþûüý­°±²³¦§¡¤¢£¥Æ')
+    garbled_chars = set('µ¸¶·¹¨»¾¼½©ªÊÇÈÉËÌÐÎÏÑÕÒÓÔÖßãèåæçé¬íêëìî®ïóñò÷ôõöøúþûüý­°±²³¦§¡¤¢£¥ÆŸœš')
     garbled_count = sum(1 for c in text if c in garbled_chars)
     garbled_ratio = garbled_count / alpha_count
     
-    # Nếu tỷ lệ ký tự Việt chuẩn < 3% VÀ có nhiều ký tự lạ > 3% → vỡ encoding
+    # 1. Quá ít ký tự Việt chuẩn VÀ có nhiều ký tự rác TCVN3
     if vn_ratio < 0.03 and garbled_ratio > 0.03:
         return True
-    
+        
+    # 2. Hoặc quá ít ký tự Việt có dấu trong một văn bản dài tiếng Việt
+    # Nếu là văn bản tiếng Anh, vn_ratio có thể là 0, nhưng ta biết đây là sách tiếng Việt.
+    if vn_ratio < 0.01:
+        return True
+        
     return False
 
 
@@ -91,7 +88,7 @@ def extract_pages_with_ocr_fallback(pdf_bytes: bytes, max_pages: int = None) -> 
     
     # --- Bước 1: Kiểm tra 3 trang đầu bằng text extraction ---
     sample_text = ""
-    for i in range(min(5, total)):
+    for i in range(min(15, total)):
         sample_text += doc.load_page(i).get_text("text") + "\n"
     
     use_ocr = _is_garbled_vietnamese(sample_text)
