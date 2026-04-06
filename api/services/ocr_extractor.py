@@ -29,6 +29,13 @@ def _is_garbled_vietnamese(text: str) -> bool:
     alpha_count = sum(1 for c in text if c.isalpha())
     non_space_len = len(text.replace(' ', '').replace('\n', ''))
     
+    # Ký tự điều khiển C1 (0x80 - 0x9F) thường xuyên xuất hiện khi font custom bị map sai vào Unicode
+    c1_control_count = sum(1 for c in text if 0x80 <= ord(c) <= 0x9F)
+    weird_symbols_count = sum(1 for c in text if c in '«»©®µ¶×÷')
+    
+    if c1_control_count > 50 or weird_symbols_count > 50:
+        return True
+    
     # Text rác: alpha_count quá nhỏ so với tổng text (toàn ký tự lạ/symbol)
     if non_space_len > 100 and alpha_count < non_space_len * 0.1:
         return True
@@ -47,8 +54,9 @@ def _is_garbled_vietnamese(text: str) -> bool:
         return True
         
     # 2. Hoặc quá ít ký tự Việt có dấu trong một văn bản dài tiếng Việt
-    # Nếu là văn bản tiếng Anh, vn_ratio có thể là 0, nhưng ta biết đây là sách tiếng Việt.
-    if vn_ratio < 0.01:
+    # Tính cả text tiếng Anh có số lượng nhỏ vn_ratio nhưng nếu dài thì vn_ratio=0
+    # Nên dùng ngưỡng an toàn hơn: vn_ratio < 0.005 (nửa phần trăm)
+    if vn_ratio < 0.005 and vn_count < 5:
         return True
         
     return False
