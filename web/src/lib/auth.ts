@@ -44,7 +44,8 @@ export function isAdmin(): boolean {
 
 // ── Fetch với Bearer token ────────────────────────────────────────────────────
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://ebook-api-7v44.onrender.com/api/v1';
+const rawUrl = (process.env.NEXT_PUBLIC_API_URL || 'https://ebook-api-7v44.onrender.com/api/v1').replace(/\/$/, '');
+const API_BASE = rawUrl.endsWith('/api/v1') ? rawUrl : `${rawUrl}/api/v1`;
 
 async function authFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
