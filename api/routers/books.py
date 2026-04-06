@@ -6,12 +6,13 @@ Books Router
 - DELETE /books/{id} — Xóa sách
 """
 import uuid
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Depends
 from fastapi.responses import JSONResponse
 
 from models.schemas import BookResponse, BookListResponse, IngestionStatus
 from services import ingestion
 from services.metadata_extractor import extract_metadata_from_pdf
+from core.auth import require_admin
 
 router = APIRouter(prefix="/books", tags=["Books"])
 
@@ -24,11 +25,14 @@ async def upload_book(
     author: str = Form(None, description="Tác giả"),
     publisher: str = Form(None, description="Nhà xuất bản"),
     published_year: str = Form(None, description="Năm xuất bản"),
+    category: str = Form(None, description="Danh mục sách"),
+    page_size: str = Form(None, description="Khổ cỡ sách"),
     description: str = Form(None, description="Mô tả sách"),
     language: str = Form("vi", description="Ngôn ngữ (vi/en)"),
+    _: dict = Depends(require_admin),
 ):
     """
-    Upload PDF — trả về ngay với book_id, ingestion chạy nền.
+    Upload PDF — chỉ Admin. Trả về ngay với book_id, ingestion chạy nền.
     Frontend dùng GET /books/{id} để poll status.
     """
     if not file.filename or not file.filename.lower().endswith(".pdf"):
@@ -38,7 +42,7 @@ async def upload_book(
 
     pdf_bytes = await file.read()
     unique_filename = f"{uuid.uuid4()}_{file.filename}"
-    
+
     # Kích hoạt AI nếu có thông số trống
     is_default_title = (title == file.filename.replace('.pdf', '') or title == file.filename)
     if is_default_title or not author or not publisher or not published_year:
@@ -62,6 +66,8 @@ async def upload_book(
             author=author,
             publisher=publisher,
             published_year=published_year,
+            category=category,
+            page_size=page_size,
             description=description,
             language=language,
         )
@@ -85,7 +91,7 @@ async def upload_book(
 
 @router.get("", response_model=BookListResponse)
 async def list_books():
-    """Lấy danh sách tất cả sách."""
+    """Lấy danh sách tất cả sách (public)."""
     books_data = ingestion.list_books()
     return BookListResponse(
         books=[BookResponse(**b) for b in books_data],
@@ -95,7 +101,7 @@ async def list_books():
 
 @router.get("/{book_id}", response_model=BookResponse)
 async def get_book(book_id: str):
-    """Lấy metadata chi tiết của một cuốn sách."""
+    """Lấy metadata chi tiết của một cuốn sách (public)."""
     book = ingestion.get_book(book_id)
     if not book:
         raise HTTPException(status_code=404, detail="Không tìm thấy sách")
@@ -103,8 +109,8 @@ async def get_book(book_id: str):
 
 
 @router.delete("/{book_id}")
-async def delete_book(book_id: str):
-    """Xóa sách và toàn bộ chunks liên quan."""
+async def delete_book(book_id: str, _: dict = Depends(require_admin)):
+    """Xóa sách — chỉ Admin."""
     book = ingestion.get_book(book_id)
     if not book:
         raise HTTPException(status_code=404, detail="Không tìm thấy sách")

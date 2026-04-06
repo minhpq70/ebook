@@ -6,6 +6,9 @@ export interface Book {
   author?: string;
   publisher?: string;
   published_year?: string;
+  category?: string;
+  page_size?: string;
+  ai_summary?: string;
   description?: string;
   language: string;
   cover_url?: string;
@@ -36,10 +39,16 @@ export interface RAGQueryResponse {
 export type TaskType = 'qa' | 'explain' | 'summarize_chapter' | 'summarize_book' | 'suggest';
 
 async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
+  // Tự động đính kèm Bearer token nếu đã đăng nhập
+  let token: string | null = null;
+  if (typeof window !== 'undefined') {
+    token = localStorage.getItem('ebook_token');
+  }
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
       ...options?.headers,
     },
   });
@@ -58,18 +67,24 @@ export const booksAPI = {
 
   upload: async (
     file: File,
-    metadata: { title: string; author?: string; publisher?: string; published_year?: string; description?: string; language?: string }
+    metadata: { title: string; author?: string; publisher?: string; published_year?: string; category?: string; page_size?: string; description?: string; language?: string }
   ) => {
+    const { getToken } = await import('@/lib/auth');
     const form = new FormData();
     form.append('file', file);
     form.append('title', metadata.title);
     if (metadata.author) form.append('author', metadata.author);
     if (metadata.publisher) form.append('publisher', metadata.publisher);
     if (metadata.published_year) form.append('published_year', metadata.published_year);
+    if (metadata.category) form.append('category', metadata.category);
+    if (metadata.page_size) form.append('page_size', metadata.page_size);
     if (metadata.description) form.append('description', metadata.description);
     form.append('language', metadata.language || 'vi');
 
-    const res = await fetch(`${API_BASE}/books/upload`, { method: 'POST', body: form });
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${API_BASE}/books/upload`, { method: 'POST', headers, body: form });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
       throw new Error(err.detail || 'Lỗi upload');

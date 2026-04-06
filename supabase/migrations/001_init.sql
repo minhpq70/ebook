@@ -107,11 +107,11 @@ as $$
       id, book_id, chunk_index, page_number, content,
       ts_rank(
         to_tsvector('simple', content),
-        plainto_tsquery('simple', p_query_text)
+        websearch_to_tsquery('simple', p_query_text)
       ) as fts_score
     from book_chunks
     where book_chunks.book_id = p_book_id
-      and to_tsvector('simple', content) @@ plainto_tsquery('simple', p_query_text)
+      and to_tsvector('simple', content) @@ websearch_to_tsquery('simple', p_query_text)
     limit p_top_k * 2
   ),
   combined as (

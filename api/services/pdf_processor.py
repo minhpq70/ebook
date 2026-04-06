@@ -119,4 +119,19 @@ def process_pdf(pdf_bytes: bytes) -> tuple[list[TextChunk], int]:
     pages = extract_pages_from_pdf(pdf_bytes)
     total_pages = max((p["page_number"] for p in pages), default=0)
     chunks = chunk_pages(pages)
+    
+    # Trích xuất TOC nguyên bản (nếu có) để tạo 1 chunk tham chiếu cực mạnh cho RAG
+    try:
+        from .metadata_extractor import extract_toc
+        toc_text = extract_toc(pdf_bytes)
+        if toc_text:
+            chunks.append(TextChunk(
+                content=toc_text,
+                page_number=-1, # Báo hiệu đây là metadata system-generated
+                chunk_index=-1,
+                token_count=_count_tokens(toc_text)
+            ))
+    except Exception as e:
+        print(f"Lỗi thêm TOC chunk: {e}")
+
     return chunks, total_pages

@@ -18,7 +18,7 @@ const PHASE_LABELS: Record<UploadPhase, string> = {
 export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [form, setForm] = useState({ title: '', author: '', publisher: '', published_year: '', description: '' });
+  const [form, setForm] = useState({ title: '', author: '', publisher: '', published_year: '', category: '', page_size: '', description: '' });
   const [phase, setPhase] = useState<UploadPhase>('idle');
   const [message, setMessage] = useState('');
   const [bookId, setBookId] = useState('');
@@ -88,6 +88,8 @@ export default function UploadPage() {
         author: form.author || undefined,
         publisher: form.publisher || undefined,
         published_year: form.published_year || undefined,
+        category: form.category || undefined,
+        page_size: form.page_size || undefined,
         description: form.description || undefined,
         language: 'vi',
       });
@@ -103,7 +105,7 @@ export default function UploadPage() {
   const reset = () => {
     setPhase('idle');
     setFile(null);
-    setForm({ title: '', author: '', publisher: '', published_year: '', description: '' });
+    setForm({ title: '', author: '', publisher: '', published_year: '', category: '', page_size: '', description: '' });
     setBookId('');
     setMessage('');
   };
@@ -240,6 +242,18 @@ export default function UploadPage() {
                       onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} />
                   </div>
                 ))}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label style={{ fontSize: '0.875rem', color: '#8890a4', display: 'block', marginBottom: '0.375rem' }}>Danh mục</label>
+                  <input className="input" placeholder="Ví dụ: Kinh tế, Pháp luật..."
+                    value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.875rem', color: '#8890a4', display: 'block', marginBottom: '0.375rem' }}>Khổ cỡ</label>
+                  <input className="input" placeholder="Ví dụ: 14x20cm"
+                    value={form.page_size} onChange={e => setForm(f => ({ ...f, page_size: e.target.value }))} />
+                </div>
               </div>
               <div>
                 <label style={{ fontSize: '0.875rem', color: '#8890a4', display: 'block', marginBottom: '0.375rem' }}>Mô tả</label>

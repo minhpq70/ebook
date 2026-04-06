@@ -225,6 +225,7 @@ async def stream_rag_query(
         max_tokens=settings.openai_max_tokens,
         temperature=0.3,
         stream=True,
+        stream_options={"include_usage": True},
     )
 
     async for chunk in stream:

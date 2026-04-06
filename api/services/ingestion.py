@@ -41,6 +41,8 @@ async def create_book_record(
     author: str | None = None,
     publisher: str | None = None,
     published_year: str | None = None,
+    category: str | None = None,
+    page_size: str | None = None,
     description: str | None = None,
     language: str = "vi",
 ) -> str:
@@ -64,6 +66,8 @@ async def create_book_record(
         "author": author,
         "publisher": publisher,
         "published_year": published_year,
+        "category": category,
+        "page_size": page_size,
         "description": description,
         "language": language,
         "file_path": file_path,
@@ -89,13 +93,41 @@ async def run_ingestion_pipeline(book_id: str, pdf_bytes: bytes) -> None:
         embeddings = await embed_batch(texts)
         await _store_chunks(book_id, chunks, embeddings)
 
-        supabase.table("books").update({
+        # Trích xuất ảnh bìa
+        from .metadata_extractor import get_cover_image_bytes, generate_ai_summary
+        cover_bytes = get_cover_image_bytes(pdf_bytes)
+        cover_url = None
+        if cover_bytes:
+            cover_path = f"{book_id}.jpeg"
+            supabase.storage.from_("covers").upload(
+                path=cover_path,
+                file=cover_bytes,
+                file_options={"content-type": "image/jpeg", "upsert": "true"}
+            )
+            cover_url = supabase.storage.from_("covers").get_public_url(cover_path)
+            if isinstance(cover_url, dict):
+                 cover_url = cover_url.get('publicURL', cover_url.get('publicUrl'))
+            if not cover_url:
+                cover_url = f"{supabase.supabase_url}/storage/v1/object/public/covers/{cover_path}"
+
+        # Tạo AI summary
+        ai_summary = await generate_ai_summary(pdf_bytes)
+
+        update_data = {
             "status": "ready",
             "total_pages": total_pages,
-        }).eq("id", book_id).execute()
+        }
+        if cover_url:
+            update_data["cover_url"] = cover_url
+        if ai_summary:
+            update_data["ai_summary"] = ai_summary
+
+        supabase.table("books").update(update_data).eq("id", book_id).execute()
 
     except Exception as e:
+        print(f"Ingestion pipeline error: {e}")
         supabase.table("books").update({"status": "error"}).eq("id", book_id).execute()
+        # Vẫn reraise exception để có log chi tiết nếu cần
         raise e
 
 

@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     app_env: str = "development"
     app_cors_origins: str = "http://localhost:3000"
 
+    # Auth — đặt giá trị ngẫu nhiên mạnh trong .env, KHÔNG commit lên GitHub
+    jwt_secret: str = "CHANGE_ME_USE_STRONG_SECRET_IN_DOT_ENV"
+    jwt_expire_hours: int = 24          # token người dùng hết hạn sau 24h
+    embed_secret: str = "CHANGE_ME_EMBED_SECRET"  # shared secret với hệ thống NXB
+
     @property
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.app_cors_origins.split(",")]

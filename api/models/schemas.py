@@ -16,15 +16,18 @@ class BookCreate(BaseModel):
 class BookResponse(BaseModel):
     id: str
     title: str
-    author: Optional[str]
-    publisher: Optional[str]
-    published_year: Optional[str]
-    description: Optional[str]
+    author: Optional[str] = None
+    publisher: Optional[str] = None
+    published_year: Optional[str] = None
+    category: Optional[str] = None
+    page_size: Optional[str] = None
+    ai_summary: Optional[str] = None
+    description: Optional[str] = None
     language: str
-    cover_url: Optional[str]
+    cover_url: Optional[str] = None
     file_path: str
-    file_size: Optional[int]
-    total_pages: Optional[int]
+    file_size: Optional[int] = None
+    total_pages: Optional[int] = None
     status: str
     created_at: datetime
 
