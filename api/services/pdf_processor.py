@@ -43,14 +43,22 @@ def _clean_text(text: str) -> str:
 def extract_pages_from_pdf(pdf_bytes: bytes) -> list[dict]:
     """
     Trích xuất text từng trang của PDF.
+    Tự động phát hiện text bị vỡ encoding → dùng OCR fallback.
     Returns: [{'page_number': int, 'text': str}, ...]
     """
+    try:
+        from .ocr_extractor import extract_pages_with_ocr_fallback
+        return extract_pages_with_ocr_fallback(pdf_bytes)
+    except ImportError:
+        print("[WARN] ocr_extractor not available, using pypdf only", flush=True)
+    
+    # Fallback: pypdf thường (nếu OCR module không có)
     reader = PdfReader(io.BytesIO(pdf_bytes))
     pages = []
     for i, page in enumerate(reader.pages):
         text = page.extract_text() or ""
         text = _clean_text(text)
-        if text:  # bỏ qua trang trống
+        if text:
             pages.append({
                 "page_number": i + 1,
                 "text": text

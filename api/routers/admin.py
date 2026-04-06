@@ -99,3 +99,48 @@ def update_book_meta(
         raise HTTPException(status_code=404, detail="Không tìm thấy sách")
 
     return {"message": "Cập nhật thành công", "book": result.data[0]}
+
+
+@router.post("/books/{book_id}/reingest")
+async def reingest_book(
+    book_id: str,
+    background_tasks: 'BackgroundTasks',
+    _: dict = Depends(require_admin),
+):
+    """
+    Re-ingest sách: xóa chunks cũ và trích xuất lại bằng OCR.
+    Dùng khi text bị vỡ encoding do font PDF đặc biệt.
+    """
+    from fastapi import BackgroundTasks as BT
+    from services import ingestion
+
+    supabase = get_supabase()
+    book = ingestion.get_book(book_id)
+    if not book:
+        raise HTTPException(status_code=404, detail="Không tìm thấy sách")
+
+    # Đánh dấu đang xử lý
+    supabase.table("books").update({"status": "processing"}).eq("id", book_id).execute()
+
+    async def _do_reingest():
+        try:
+            # Xóa chunks cũ
+            supabase.table("book_chunks").delete().eq("book_id", book_id).execute()
+            print(f"[REINGEST] Đã xóa chunks cũ cho sách {book_id}", flush=True)
+
+            # Download PDF
+            file_path = book.get("file_path")
+            pdf_bytes = supabase.storage.from_("books").download(file_path)
+            print(f"[REINGEST] Downloaded PDF: {len(pdf_bytes)} bytes", flush=True)
+
+            # Chạy lại pipeline ingestion
+            await ingestion.run_ingestion_pipeline(book_id, pdf_bytes)
+            print(f"[REINGEST] Hoàn thành re-ingest cho sách {book_id}", flush=True)
+        except Exception as e:
+            print(f"[REINGEST] Lỗi: {e}", flush=True)
+            supabase.table("books").update({"status": "error"}).eq("id", book_id).execute()
+
+    import asyncio
+    asyncio.create_task(_do_reingest())
+
+    return {"message": f"Đang re-ingest sách '{book['title']}'. Quá trình này mất vài phút (OCR).", "book_id": book_id}

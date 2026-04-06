@@ -6,11 +6,18 @@ from core.openai_client import get_openai
 from core.config import settings
 
 def extract_early_text(pdf_bytes: bytes, max_pages: int = 3) -> str:
-    """Extraxt text từ n trang đầu tiên bằng Pypdf để đưa cho AI đọc."""
+    """Trích xuất text từ n trang đầu tiên, tự động dùng OCR nếu text bị vỡ."""
+    try:
+        from .ocr_extractor import extract_pages_with_ocr_fallback
+        pages = extract_pages_with_ocr_fallback(pdf_bytes, max_pages=max_pages)
+        return "\n\n".join(p["text"] for p in pages).strip()
+    except ImportError:
+        pass
+    
+    # Fallback pypdf
     try:
         reader = PdfReader(io.BytesIO(pdf_bytes))
         text = ""
-        # Đọc 3 trang đầu
         for i in range(min(max_pages, len(reader.pages))):
             page_text = reader.pages[i].extract_text()
             if page_text:
@@ -40,54 +47,59 @@ def get_cover_image_bytes(pdf_bytes: bytes) -> bytes | None:
 
 def extract_toc(pdf_bytes: bytes) -> str | None:
     """
-    Trích xuất Mục lục (Table of Contents / Outline) có sẵn trong PDF.
-    Nếu không có, quét bằng chữ 'Mục Lục' ở đầu hoặc cuối sách.
-    Trả về dạng văn bản (text), hoặc None nếu không có.
+    Trích xuất Mục lục (Table of Contents / Outline) từ PDF.
+    Ưu tiên: metadata TOC → OCR trang mục lục → text extraction thường.
     """
     try:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         toc = doc.get_toc()
-        
-        # Dù có doc.get_toc() hay không, ta CŨNG NÊN quét thêm các trang PDF 
-        # vì nhiều file PDF có get_toc() bị tác giả làm thiếu hoặc hỏng giữa chừng.
         total_pages = len(doc)
+        
+        final_toc = ""
+        
+        # Phần 1: Metadata TOC (nếu có, luôn chính xác)
+        if toc:
+            lines = ["[HỆ THỐNG] MỤC LỤC TỪ METADATA:"]
+            for item in toc:
+                level, title, page = item[0], item[1], item[2]
+                indent = "  " * (level - 1)
+                lines.append(f"{indent}- {title} (Trang {page})")
+            final_toc += "\n".join(lines) + "\n\n"
+        
+        # Phần 2: Quét text trang mục lục
+        # Kiểm tra xem text extraction có bị vỡ không
+        sample = doc.load_page(min(4, total_pages - 1)).get_text("text")
+        
+        from .ocr_extractor import _is_garbled_vietnamese, ocr_page
+        use_ocr = _is_garbled_vietnamese(sample)
+        
         search_pages = list(range(min(15, total_pages)))
         if total_pages > 30:
             search_pages.extend(range(total_pages - 15, total_pages))
-            
+        
         found_toc_text = ""
         in_toc_mode = False
         
         for p in search_pages:
-            text = doc.load_page(p).get_text("text")
-            if "mục lục" in text.lower() or "table of contents" in text.lower():
+            if use_ocr:
+                text = ocr_page(doc.load_page(p), lang='vie', dpi=300)
+            else:
+                text = doc.load_page(p).get_text("text")
+            
+            if "mục lục" in text.lower() or "MỤC LỤC" in text:
                 in_toc_mode = True
             
             if in_toc_mode:
                 found_toc_text += text + "\n"
-            
+        
         doc.close()
         
-        final_toc = ""
-        if toc:
-            # Nếu có sẵn metadata TOC, ưu tiên thêm vào trước
-            lines = ["[HỆ THỐNG] MỤC LỤC TÍCH HỢP TỪ METADATA:"]
-            for item in toc:
-                level = item[0]
-                title = item[1]
-                page = item[2]
-                indent = "  " * (level - 1)
-                lines.append(f"{indent}- {title} (Trang {page})")
-            final_toc += "\n".join(lines) + "\n\n"
-            
         if len(found_toc_text) > 50:
-            final_toc += f"[HỆ THỐNG] VĂN BẢN QUÉT ĐƯỢC TRÊN TRANG MỤC LỤC CHI TIẾT:\n{found_toc_text[:15000]}"
-            
-        if final_toc.strip() != "":
+            final_toc += f"[HỆ THỐNG] VĂN BẢN MỤC LỤC CHI TIẾT:\n{found_toc_text[:20000]}"
+        
+        if final_toc.strip():
             return final_toc
-            
-        return None
-            
+        
         return None
     except Exception as e:
         print(f"Lỗi trích xuất Mục lục: {e}")
