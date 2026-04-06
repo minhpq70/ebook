@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { BookOpen, Search, ChevronRight, LogIn, LogOut, User, Upload } from 'lucide-react';
-import { booksAPI, Book } from '@/lib/api';
+import { booksAPI, Book, categoriesAPI } from '@/lib/api';
 import { getUser, clearAuth, isAdmin } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 
@@ -12,22 +12,26 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('');
+  const [dbCategories, setDbCategories] = useState<{ id: string; name: string; sort_order: number }[]>([]);
   const [user, setUser] = useState<ReturnType<typeof getUser>>(null);
 
   // Đọc user từ localStorage chỉ ở client (tránh hydration mismatch)
   useEffect(() => { setUser(getUser()); }, []);
 
   useEffect(() => {
-    booksAPI.list()
-      .then(d => setBooks(d.books.filter(b => b.status === 'ready')))
+    Promise.all([booksAPI.list(), categoriesAPI.list()])
+      .then(([bData, cData]) => {
+        setBooks(bData.books.filter(b => b.status === 'ready'));
+        setDbCategories(cData);
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
 
   const handleLogout = () => { clearAuth(); router.refresh(); };
 
-  // Lấy danh sách danh mục
-  const categories = Array.from(new Set(books.map(b => b.category).filter(Boolean))) as string[];
+  // Lấy danh sách danh mục để làm Tabs (Chỉ lấy Name)
+  const categoryNames = dbCategories.map(c => c.name);
 
   // Lọc sách
   const filtered = books.filter(b => {
@@ -40,16 +44,25 @@ export default function HomePage() {
     return matchSearch && matchCat;
   });
 
-  // Nhóm theo danh mục (chỉ khi không search)
+  // Nhóm theo DB Categories
   const grouped: Record<string, Book[]> = {};
   if (!search.trim() && !activeCategory) {
-    const withCat = books.filter(b => b.category);
-    const withoutCat = books.filter(b => !b.category);
-    for (const b of withCat) {
-      if (!grouped[b.category!]) grouped[b.category!] = [];
-      grouped[b.category!].push(b);
+    const unclassified: Book[] = [];
+    // Khởi tạo các nhóm rỗng để danh mục không có sách vẫn hiện
+    for (const cat of dbCategories) {
+      grouped[cat.name] = [];
     }
-    if (withoutCat.length) grouped['Chưa phân loại'] = withoutCat;
+
+    for (const b of books) {
+      if (b.category && grouped[b.category] !== undefined) {
+        grouped[b.category].push(b);
+      } else {
+        unclassified.push(b);
+      }
+    }
+    if (unclassified.length > 0) {
+      grouped['Chưa phân loại'] = unclassified;
+    }
   }
 
   return (
@@ -105,7 +118,7 @@ export default function HomePage() {
           </div>
 
           {/* Category nav */}
-          {categories.length > 0 && (
+          {categoryNames.length > 0 && (
             <div style={{ display: 'flex', gap: '0.25rem', padding: '0.5rem 0', overflowX: 'auto' }}>
               <button
                 onClick={() => setActiveCategory('')}
@@ -115,7 +128,7 @@ export default function HomePage() {
               >
                 Tất cả
               </button>
-              {categories.map(cat => (
+              {categoryNames.map(cat => (
                 <button key={cat}
                   onClick={() => { setActiveCategory(cat); setSearch(''); }}
                   style={{ whiteSpace: 'nowrap', padding: '0.375rem 0.875rem', borderRadius: '2rem', border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500,
@@ -162,9 +175,15 @@ export default function HomePage() {
                     Xem tất cả <ChevronRight style={{ width: 14, height: 14 }} />
                   </button>
                 </div>
-                <div style={{ display: 'flex', gap: '1rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
-                  {catBooks.slice(0, 6).map(book => <BookCard key={book.id} book={book} horizontal />)}
-                </div>
+                {catBooks.length > 0 ? (
+                  <div style={{ display: 'flex', gap: '1rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
+                    {catBooks.slice(0, 6).map(book => <BookCard key={book.id} book={book} horizontal />)}
+                  </div>
+                ) : (
+                  <div style={{ padding: '2rem', textAlign: 'center', background: 'white', borderRadius: '0.75rem', color: '#999', fontSize: '0.875rem' }}>
+                    Chưa có sách nào trong danh mục này
+                  </div>
+                )}
               </section>
             ))}
           </div>

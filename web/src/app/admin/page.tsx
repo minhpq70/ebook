@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { BookOpen, Upload, Trash2, Eye, ArrowLeft, Loader2, Settings, FileText, Edit2, Check, X, LogOut } from 'lucide-react';
-import { booksAPI, Book } from '@/lib/api';
+import { booksAPI, Book, categoriesAPI } from '@/lib/api';
 import { adminAPI, authAPI, clearAuth, getUser } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 
@@ -25,6 +25,7 @@ export default function AdminPage() {
   const [editBook, setEditBook] = useState<string | null>(null);
   const [editData, setEditData] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
 
   // Logs
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -55,7 +56,7 @@ export default function AdminPage() {
     adminAPI.getConfig().then(d => { setConfig(d); setNewProvider(d.current.provider); setNewChatModel(d.current.chat_model); setNewEmbedModel(d.current.embedding_model); }).catch(console.error).finally(() => setConfigLoading(false));
   };
 
-  useEffect(() => { fetchBooks(); }, []);
+  useEffect(() => { fetchBooks(); categoriesAPI.list().then(setCategories).catch(console.error); }, []);
   useEffect(() => { if (tab === 'logs') fetchLogs(); if (tab === 'config') fetchConfig(); }, [tab]);
 
   const handleDelete = async (book: Book) => {
@@ -72,6 +73,19 @@ export default function AdminPage() {
   const saveEdit = async (bookId: string) => {
     setSaving(true);
     try {
+      if (editData.category) {
+        const catName = editData.category.trim();
+        const exists = categories.find(c => c.name.toLowerCase() === catName.toLowerCase());
+        if (!exists) {
+          try {
+            await categoriesAPI.create({ name: catName, sort_order: categories.length + 1 });
+            setCategories(p => [...p, { id: 'new', name: catName }]);
+          } catch (e) {
+            console.warn('Cannot auto-create category', e);
+          }
+        }
+      }
+
       await adminAPI.updateBook(bookId, editData);
       setBooks(p => p.map(b => b.id === bookId ? { ...b, ...editData } : b));
       setEditBook(null);
@@ -106,6 +120,7 @@ export default function AdminPage() {
             <span className="text-sm text-[#8890a4]">— {user?.username}</span>
           </div>
           <div className="flex items-center gap-3">
+            <Link href="/admin/categories" className="btn-ghost px-3 py-2 text-sm">🗂 Quản lý Danh mục</Link>
             <Link href="/admin/upload" className="btn-primary"><Upload className="w-4 h-4" /> Upload sách</Link>
             <button onClick={() => { clearAuth(); router.replace('/login'); }} className="btn-ghost px-3 py-2" title="Đăng xuất">
               <LogOut className="w-4 h-4" />
@@ -143,13 +158,28 @@ export default function AdminPage() {
                       /* Edit mode */
                       <div className="space-y-3">
                         <div className="grid grid-cols-2 gap-3">
-                          {(['title', 'author', 'publisher', 'published_year', 'category', 'page_size'] as const).map(f => (
+                          {[
+                            { f: 'title', label: 'Tiêu đề' },
+                            { f: 'author', label: 'Tác giả' },
+                            { f: 'publisher', label: 'Nhà xuất bản' },
+                            { f: 'published_year', label: 'Năm xuất bản' },
+                            { f: 'category', label: 'Danh mục' },
+                            { f: 'page_size', label: 'Khổ cỡ' }
+                          ].map(({ f, label }) => (
                             <div key={f}>
-                              <label className="text-xs text-[#8890a4] mb-1 block capitalize">{f.replace('_', ' ')}</label>
-                              <input className="input" value={editData[f] || ''} onChange={e => setEditData(p => ({ ...p, [f]: e.target.value }))} />
+                              <label className="text-xs text-[#8890a4] mb-1 block">{label}</label>
+                              <input 
+                                className="input" 
+                                list={f === 'category' ? 'admin-category-list' : undefined}
+                                value={editData[f] || ''} 
+                                onChange={e => setEditData(p => ({ ...p, [f]: e.target.value }))} 
+                              />
                             </div>
                           ))}
                         </div>
+                        <datalist id="admin-category-list">
+                          {categories.map(c => <option key={c.name} value={c.name} />)}
+                        </datalist>
                         <div>
                           <label className="text-xs text-[#8890a4] mb-1 block">Mô tả</label>
                           <textarea className="input resize-none" rows={2} value={editData.description || ''} onChange={e => setEditData(p => ({ ...p, description: e.target.value }))} />

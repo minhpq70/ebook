@@ -3,7 +3,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Upload, BookOpen, ArrowLeft, FileText, CheckCircle, XCircle, Loader2, Clock } from 'lucide-react';
-import { booksAPI } from '@/lib/api';
+import { booksAPI, categoriesAPI } from '@/lib/api';
 
 type UploadPhase = 'idle' | 'uploading' | 'processing' | 'success' | 'error';
 
@@ -23,8 +23,13 @@ export default function UploadPage() {
   const [message, setMessage] = useState('');
   const [bookId, setBookId] = useState('');
   const [elapsedSec, setElapsedSec] = useState(0);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    categoriesAPI.list().then(setCategories).catch(console.error);
+  }, []);
 
   // Tính giờ chạy khi đang processing
   useEffect(() => {
@@ -83,6 +88,19 @@ export default function UploadPage() {
     setPhase('uploading');
 
     try {
+      // Thử tạo category nếu chưa có
+      if (form.category) {
+        const catName = form.category.trim();
+        const exists = categories.find(c => c.name.toLowerCase() === catName.toLowerCase());
+        if (!exists) {
+          try {
+            await categoriesAPI.create({ name: catName, sort_order: categories.length + 1 });
+          } catch (e) {
+            console.warn('Cannot auto-create category', e);
+          }
+        }
+      }
+
       const result = await booksAPI.upload(file, {
         title: form.title,
         author: form.author || undefined,
@@ -246,8 +264,11 @@ export default function UploadPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
                   <label style={{ fontSize: '0.875rem', color: '#8890a4', display: 'block', marginBottom: '0.375rem' }}>Danh mục</label>
-                  <input className="input" placeholder="Ví dụ: Kinh tế, Pháp luật..."
+                  <input className="input" placeholder="Ví dụ: Kinh tế, Pháp luật..." list="category-list"
                     value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} />
+                  <datalist id="category-list">
+                    {categories.map(c => <option key={c.id} value={c.name} />)}
+                  </datalist>
                 </div>
                 <div>
                   <label style={{ fontSize: '0.875rem', color: '#8890a4', display: 'block', marginBottom: '0.375rem' }}>Khổ cỡ</label>

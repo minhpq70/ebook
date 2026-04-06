@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from core.config import settings
-from routers import books, rag, auth, admin
+from routers import books, rag, auth, admin, categories
 
 # ── Logging setup ────────────────────────────────────────────────────────────
 # LƯU Ý TRIỂN KHAI:
@@ -63,6 +63,7 @@ app.include_router(books.router, prefix="/api/v1")
 app.include_router(rag.router, prefix="/api/v1")
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
+app.include_router(categories.router, prefix="/api/v1")
 
 
 # Fix: CORS middleware của Starlette không tự thêm header vào error responses.

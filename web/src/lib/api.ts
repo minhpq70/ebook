@@ -114,3 +114,13 @@ export const ragAPI = {
       body: JSON.stringify(req),
     }),
 };
+
+// Categories API
+export const categoriesAPI = {
+  list: () => fetchAPI<{ id: string; name: string; sort_order: number; created_at: string }[]>('/categories'),
+  create: (data: { name: string; sort_order: number }) => fetchAPI<{ id: string; name: string }>('/categories', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  }),
+  delete: (id: string) => fetchAPI<{ message: string }>(`/categories/${id}`, { method: 'DELETE' }),
+};
