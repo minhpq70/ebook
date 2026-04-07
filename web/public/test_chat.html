@@ -245,12 +245,12 @@ async function sendQuestion() {
     let fullText = '';
 
     try {
-        const response = await fetch(`${apiUrl}/api/v1/rag/query`, {
+        const response = await fetch(`${apiUrl}/api/v1/rag/query/stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 book_id: bookId,
-                question: question,
+                query: question,
                 task_type: taskType,
                 top_k: 8
             })
