@@ -39,12 +39,19 @@ Quy tắc BẮT BUỘC:
 - Trả lời rõ ràng, dễ hiểu, sử dụng markdown (bullet points, heading) cho dễ đọc
 - Có thể trích dẫn trực tiếp từ sách khi cần thiết
 
+Quy tắc CHỐNG SAI LỆCH (QUAN TRỌNG NHẤT):
+- TUYỆT ĐỐI KHÔNG thay đổi, sửa chữa, hoặc diễn giải lại bất kỳ tên riêng, tiêu đề, thuật ngữ nào từ sách
+- Phải SAO CHÉP NGUYÊN VĂN từ đoạn trích — kể cả khi bạn nghi ngờ có lỗi chính tả
+- Nếu không chắc chắn một từ, hãy copy chính xác từ đoạn trích thay vì đoán
+- VÍ DỤ SAI: Đoạn trích viết "Đổi mới" nhưng bạn viết "Đẩy mạnh" → KHÔNG CHẤP NHẬN
+
 Quy tắc ĐẶC BIỆT về Mục lục:
 - NẾU người dùng hỏi về "mục lục", "danh sách chương", "liệt kê nội dung":
   + BẮT BUỘC liệt kê TOÀN BỘ các mục từ đầu đến cuối, kèm số trang nếu có
   + KHÔNG ĐƯỢC tóm tắt, rút gọn, hay viết "và còn nhiều mục khác..."
   + KHÔNG ĐƯỢC giới hạn số mục hiển thị, phải ghi đầy đủ 100%
-  + Mỗi mục trên 1 dòng riêng, giữ đúng thứ tự trong sách""",
+  + Mỗi mục trên 1 dòng riêng, giữ đúng thứ tự trong sách
+  + SAO CHÉP chính xác từng ký tự tiêu đề từ đoạn trích, KHÔNG viết lại""",
 
     "explain": """Bạn là giáo viên/chuyên gia giải thích văn bản sâu sắc.
 Nhiệm vụ: Giải thích đoạn văn khó hoặc khái niệm phức tạp trong sách cho người đọc hiểu.
@@ -133,8 +140,12 @@ async def run_rag_query(
 
     # Tự động tăng max_tokens cho câu hỏi mục lục (cần output dài)
     max_tokens = settings.openai_max_tokens
-    if is_toc_query(query):
-        max_tokens = max(max_tokens, 8000)
+    is_toc = is_toc_query(query)
+    if is_toc:
+        max_tokens = max(max_tokens, 12000)
+
+    # Temperature = 0 cho mục lục (sao chép nguyên văn), 0.2 cho câu hỏi thường
+    temperature = 0.0 if is_toc else 0.2
 
     # Gọi OpenAI — chỉ gửi query + chunks, KHÔNG có toàn bộ sách
     client = get_openai()
@@ -145,7 +156,7 @@ async def run_rag_query(
             {"role": "user", "content": user_message},
         ],
         max_tokens=max_tokens,
-        temperature=0.2,  # thấp để có câu trả lời ổn định, ít hallucinate
+        temperature=temperature,  # 0 cho mục lục (chống hallucination), 0.2 cho Q&A
     )
 
     answer = response.choices[0].message.content or ""
@@ -239,8 +250,12 @@ async def stream_rag_query(
 
     # Tự động tăng max_tokens cho câu hỏi mục lục
     max_tokens = settings.openai_max_tokens
-    if is_toc_query(query):
+    is_toc = is_toc_query(query)
+    if is_toc:
         max_tokens = max(max_tokens, 12000)
+
+    # Temperature = 0 cho mục lục (sao chép nguyên văn), 0.2 cho câu hỏi thường
+    temperature = 0.0 if is_toc else 0.2
 
     # Stream tokens từ OpenAI
     client = get_openai()
@@ -254,7 +269,7 @@ async def stream_rag_query(
             {"role": "user", "content": user_message},
         ],
         max_tokens=max_tokens,
-        temperature=0.2,
+        temperature=temperature,
         stream=True,
         stream_options={"include_usage": True},
     )
