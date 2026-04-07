@@ -240,7 +240,7 @@ async def stream_rag_query(
     # Tự động tăng max_tokens cho câu hỏi mục lục
     max_tokens = settings.openai_max_tokens
     if is_toc_query(query):
-        max_tokens = max(max_tokens, 8000)
+        max_tokens = max(max_tokens, 12000)
 
     # Stream tokens từ OpenAI
     client = get_openai()
