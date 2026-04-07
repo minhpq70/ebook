@@ -108,10 +108,8 @@ async def reingest_book(
     _: dict = Depends(require_admin),
 ):
     """
-    Re-ingest sách: xóa chunks cũ và trích xuất lại bằng OCR.
-    Dùng khi text bị vỡ encoding do font PDF đặc biệt.
+    Re-ingest sách: xóa chunks cũ và trích xuất lại bằng pypdf.
     """
-    from fastapi import BackgroundTasks as BT
     from services import ingestion
 
     supabase = get_supabase()
@@ -147,9 +145,11 @@ async def reingest_book(
             print(f"[REINGEST] Hoàn thành re-ingest cho sách {book_id}", flush=True)
         except Exception as e:
             print(f"[REINGEST] Lỗi: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
             supabase.table("books").update({"status": "error"}).eq("id", book_id).execute()
 
     import asyncio
     asyncio.create_task(_do_reingest())
 
-    return {"message": f"Đang re-ingest sách '{book['title']}'. Quá trình này mất vài phút (OCR).", "book_id": book_id}
+    return {"message": f"Đang re-ingest sách '{book['title']}'. Quá trình này mất vài phút.", "book_id": book_id}

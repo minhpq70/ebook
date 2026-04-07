@@ -1,0 +1,10 @@
+Book status: processing
+Total chunks: 1489
+First 3 chunks:
+  idx=-1 pg=-1
+  idx=1213 pg=423
+  idx=1214 pg=424
+Last 3 chunks:
+  idx=2730 pg=944
+  idx=2729 pg=943
+  idx=2728 pg=943

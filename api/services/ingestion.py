@@ -83,9 +83,11 @@ async def run_ingestion_pipeline(book_id: str, pdf_bytes: bytes) -> None:
     Bước 2 (nặng, chạy nền): PDF → chunk → embed → store vectors.
     Cập nhật book status khi hoàn tất.
     """
+    import asyncio
     supabase = get_supabase()
     try:
-        chunks, total_pages = process_pdf(pdf_bytes)
+        # process_pdf là CPU-bound (pypdf parsing 944 trang) → offload sang thread
+        chunks, total_pages = await asyncio.to_thread(process_pdf, pdf_bytes)
         if not chunks:
             raise ValueError("Không trích xuất được nội dung từ PDF")
 
@@ -93,9 +95,9 @@ async def run_ingestion_pipeline(book_id: str, pdf_bytes: bytes) -> None:
         embeddings = await embed_batch(texts)
         await _store_chunks(book_id, chunks, embeddings)
 
-        # Trích xuất ảnh bìa
+        # Trích xuất ảnh bìa (cũng CPU-bound — render page thành image)
         from .metadata_extractor import get_cover_image_bytes, generate_ai_summary
-        cover_bytes = get_cover_image_bytes(pdf_bytes)
+        cover_bytes = await asyncio.to_thread(get_cover_image_bytes, pdf_bytes)
         cover_url = None
         if cover_bytes:
             cover_path = f"{book_id}.jpeg"

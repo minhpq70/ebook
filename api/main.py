@@ -101,4 +101,16 @@ async def root():
         "message": "Ebook Platform API",
         "docs": "/docs",
         "health": "/health",
+        "test_chat": "/test",
     }
+
+
+@app.get("/test", tags=["Test"], include_in_schema=False)
+async def test_chat_page():
+    """Phục vụ trang test chat AI — truy cập http://localhost:8001/test"""
+    from fastapi.responses import FileResponse
+    html_path = Path(__file__).parent / "test_chat.html"
+    if html_path.exists():
+        return FileResponse(html_path, media_type="text/html")
+    return JSONResponse({"error": "test_chat.html not found"}, status_code=404)
+
