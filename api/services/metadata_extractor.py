@@ -6,15 +6,7 @@ from core.openai_client import get_openai
 from core.config import settings
 
 def extract_early_text(pdf_bytes: bytes, max_pages: int = 3) -> str:
-    """Trích xuất text từ n trang đầu tiên, tự động dùng OCR nếu text bị vỡ."""
-    try:
-        from .ocr_extractor import extract_pages_with_ocr_fallback
-        pages = extract_pages_with_ocr_fallback(pdf_bytes, max_pages=max_pages)
-        return "\n\n".join(p["text"] for p in pages).strip()
-    except ImportError:
-        pass
-    
-    # Fallback pypdf
+    """Trích xuất text từ n trang đầu tiên bằng pypdf."""
     try:
         reader = PdfReader(io.BytesIO(pdf_bytes))
         text = ""
@@ -48,7 +40,7 @@ def get_cover_image_bytes(pdf_bytes: bytes) -> bytes | None:
 def extract_toc(pdf_bytes: bytes) -> str | None:
     """
     Trích xuất Mục lục (Table of Contents / Outline) từ PDF.
-    Ưu tiên: metadata TOC → OCR trang mục lục → text extraction thường.
+    Tìm ở cả đầu sách và cuối sách (mục lục VN thường ở cuối).
     """
     try:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -66,25 +58,20 @@ def extract_toc(pdf_bytes: bytes) -> str | None:
                 lines.append(f"{indent}- {title} (Trang {page})")
             final_toc += "\n".join(lines) + "\n\n"
         
-        # Phần 2: Quét text trang mục lục
-        # Kiểm tra xem text extraction có bị vỡ không
-        sample = doc.load_page(min(4, total_pages - 1)).get_text("text")
-        
-        from .ocr_extractor import _is_garbled_vietnamese, ocr_page
-        use_ocr = _is_garbled_vietnamese(sample)
-        
-        search_pages = list(range(min(15, total_pages)))
-        if total_pages > 30:
+        # Phần 2: Quét text trang mục lục bằng pypdf
+        # Tìm ở 10 trang đầu VÀ 15 trang cuối (mục lục VN thường ở cuối sách)
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        search_pages = list(range(min(10, total_pages)))
+        if total_pages > 20:
             search_pages.extend(range(total_pages - 15, total_pages))
         
         found_toc_text = ""
         in_toc_mode = False
         
         for p in search_pages:
-            if use_ocr:
-                text = ocr_page(doc.load_page(p), lang='vie', dpi=300)
-            else:
-                text = doc.load_page(p).get_text("text")
+            if p >= len(reader.pages):
+                continue
+            text = reader.pages[p].extract_text() or ""
             
             if "mục lục" in text.lower() or "MỤC LỤC" in text:
                 in_toc_mode = True
@@ -92,10 +79,10 @@ def extract_toc(pdf_bytes: bytes) -> str | None:
             if in_toc_mode:
                 found_toc_text += text + "\n"
         
-        doc.close()
-        
         if len(found_toc_text) > 50:
             final_toc += f"[HỆ THỐNG] VĂN BẢN MỤC LỤC CHI TIẾT:\n{found_toc_text[:20000]}"
+        
+        doc.close()
         
         if final_toc.strip():
             return final_toc
