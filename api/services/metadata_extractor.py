@@ -1,19 +1,32 @@
 import io
 import json
 import fitz  # PyMuPDF
-from pypdf import PdfReader
+import pytesseract
+from PIL import Image
 from core.openai_client import get_openai
 from core.config import settings
-
-def extract_early_text(pdf_bytes: bytes, max_pages: int = 3) -> str:
-    """Trích xuất text từ n trang đầu tiên bằng pypdf."""
+from .pdf_processor import is_valid_vietnamese_text
+import re
+def extract_early_text(pdf_bytes: bytes, max_pages: int = 5) -> str:
+    """Trích xuất text từ n trang đầu tiên bằng PyMuPDF, kèm OCR fallback."""
     try:
-        reader = PdfReader(io.BytesIO(pdf_bytes))
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         text = ""
-        for i in range(min(max_pages, len(reader.pages))):
-            page_text = reader.pages[i].extract_text()
+        for i in range(min(max_pages, len(doc))):
+            page_text = doc[i].get_text() or ""
+            # Bắt buộc OCR nếu trang quá ít chữ (<50) vì có thể trang bìa là ảnh quét
+            if len(page_text.strip()) < 50 or not is_valid_vietnamese_text(page_text):
+                try:
+                    pix = doc[i].get_pixmap(dpi=300)
+                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                    ocr_text = pytesseract.image_to_string(img, lang="vie")
+                    if len(ocr_text.strip()) > len(page_text.strip()):
+                        page_text = ocr_text
+                except Exception as e:
+                    pass
             if page_text:
                 text += page_text + "\n\n"
+        doc.close()
         return text.strip()
     except Exception as e:
         print(f"Lỗi extract text: {e}")
@@ -58,35 +71,41 @@ def extract_toc(pdf_bytes: bytes) -> str | None:
                 lines.append(f"{indent}- {title} (Trang {page})")
             final_toc += "\n".join(lines) + "\n\n"
         
-        # Phần 2: Quét text trang mục lục bằng pypdf
+        # Phần 2: Quét text trang mục lục bằng PyMuPDF
         # Tìm ở 10 trang đầu VÀ 15 trang cuối (mục lục VN thường ở cuối sách)
-        reader = PdfReader(io.BytesIO(pdf_bytes))
         search_pages = list(range(min(10, total_pages)))
         if total_pages > 20:
             search_pages.extend(range(total_pages - 15, total_pages))
-        
-        found_toc_text = ""
-        in_toc_mode = False
-        
+
+        found_entries = []
+        toc_pattern = re.compile(r"^\s*\d+\.?\s+.*?\s+\d+$")  # lines ending with page number
+
         for p in search_pages:
-            if p >= len(reader.pages):
+            if p >= len(doc):
                 continue
-            text = reader.pages[p].extract_text() or ""
-            
-            if "mục lục" in text.lower() or "MỤC LỤC" in text:
-                in_toc_mode = True
-            
-            if in_toc_mode:
-                found_toc_text += text + "\n"
-        
-        if len(found_toc_text) > 50:
-            final_toc += f"[HỆ THỐNG] VĂN BẢN MỤC LỤC CHI TIẾT:\n{found_toc_text[:20000]}"
-        
+            text = doc[p].get_text() or ""
+            # Nếu trang có ít chữ hoặc không phải tiếng Việt, dùng OCR
+            if len(text.strip()) < 50 or not is_valid_vietnamese_text(text):
+                try:
+                    pix = doc[p].get_pixmap(dpi=300)
+                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                    ocr_text = pytesseract.image_to_string(img, lang="vie")
+                    if len(ocr_text.strip()) > len(text.strip()):
+                        text = ocr_text
+                except Exception:
+                    pass
+            for line in text.splitlines():
+                if toc_pattern.match(line.strip()):
+                    found_entries.append(line.strip())
+
+        if found_entries:
+            final_toc += "[HỆ THỐNG] VĂN BẢN MỤC LỤC CHI TIẾT:\n" + "\n".join(found_entries[:2000]) + "\n\n"
+
         doc.close()
-        
+
         if final_toc.strip():
             return final_toc
-        
+
         return None
     except Exception as e:
         print(f"Lỗi trích xuất Mục lục: {e}")

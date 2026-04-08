@@ -9,6 +9,9 @@ import io
 import re
 from dataclasses import dataclass
 from pypdf import PdfReader
+import fitz
+import pytesseract
+from PIL import Image
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import tiktoken
 
@@ -40,21 +43,77 @@ def _clean_text(text: str) -> str:
     return text.strip()
 
 
+def is_valid_vietnamese_text(text: str) -> bool:
+    """
+    Kiểm tra xem văn bản trích xuất có bị lỗi font/encoding hay không
+    (dành riêng cho tiếng Việt). Trả về True nếu là text hợp lệ.
+    """
+    if not text or len(text.strip()) < 50:
+        # Quá ngắn để kết luận, mặc định cho qua để tránh OCR lãng phí
+        return True
+        
+    # Pattern gom các chữ cái có dấu tiếng Việt
+    vie_pattern = re.compile(r'[àáảãạăằắẳẵặâầấẩẫậđèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵ]')
+    # Pattern các ký tự rác phổ biến khi lỗi ToUnicode (VNI, TCVN3 nguyên thủy, VISCII...)
+    suspicious_pattern = re.compile(r'[µ¸¶·¹¨»¾¼½Æ©ÇÊÈÉË®ÌÐÎÏÑªÒÕÓÔÖ×ÝØÜÞßãä«åæç¬ñõøö÷ùúûüþ¡¢§£¤¥¦]')
+    
+    # Tính số lượng
+    vie_count = len(vie_pattern.findall(text.lower()))
+    sus_count = len(suspicious_pattern.findall(text))
+    total_chars = len(text)
+    
+    if total_chars == 0:
+        return True
+        
+    vie_ratio = vie_count / total_chars
+    sus_ratio = sus_count / total_chars
+    
+    # 1. Rất nhiều ký tự lạ -> Chắc chắn hỏng
+    if sus_ratio > 0.02:
+        return False
+        
+    # 2. Không có tý tiếng Việt nào nhưng lại dính ký tự lạ -> Hỏng
+    if vie_ratio < 0.005 and sus_ratio > 0.005:
+        return False
+        
+    return True
+
+
 def extract_pages_from_pdf(pdf_bytes: bytes) -> list[dict]:
     """
-    Trích xuất text từng trang của PDF bằng pypdf.
+    Trích xuất text từng trang của PDF bằng PyMuPDF (fitz).
+    Nếu trang bị lỗi encoding, tự động chuyển sang OCR (Tesseract).
     Returns: [{'page_number': int, 'text': str}, ...]
     """
-    reader = PdfReader(io.BytesIO(pdf_bytes))
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     pages = []
-    for i, page in enumerate(reader.pages):
-        text = page.extract_text() or ""
-        text = _clean_text(text)
+    
+    for i in range(len(doc)):
+        page = doc[i]
+        # Thử trích xuất text thông thường
+        raw_text = page.get_text() or ""
+        
+        # Đánh giá encoding
+        if not is_valid_vietnamese_text(raw_text):
+            print(f"Trang {i+1} phát hiện lỗi font/encoding. Fallback to OCR...")
+            try:
+                # Render trang thành ảnh với độ phân giải đủ đọc
+                pix = page.get_pixmap(dpi=300)
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                # Chạy OCR
+                raw_text = pytesseract.image_to_string(img, lang="vie")
+            except Exception as e:
+                print(f"Lỗi OCR trang {i+1}: {e}")
+                # Nếu OCR lỗi, vẫn giữ lại raw_text lỗi thay vì bỏ trống hoàn toàn
+
+        text = _clean_text(raw_text)
         if text:
             pages.append({
                 "page_number": i + 1,
                 "text": text
             })
+            
+    doc.close()
     return pages
 
 
