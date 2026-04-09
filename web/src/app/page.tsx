@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { BookOpen, Search, ChevronRight, LogIn, LogOut, User, Upload } from 'lucide-react';
 import { booksAPI, Book, categoriesAPI } from '@/lib/api';
-import { getUser, clearAuth, isAdmin } from '@/lib/auth';
+import { getUser, isAdmin, authAPI } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 
 export default function HomePage() {
@@ -28,7 +28,7 @@ export default function HomePage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleLogout = () => { clearAuth(); router.refresh(); };
+  const handleLogout = async () => { await authAPI.logout(); router.refresh(); };
 
   // Lấy danh sách danh mục để làm Tabs (Chỉ lấy Name)
   const categoryNames = dbCategories.map(c => c.name);
@@ -74,52 +74,52 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: '#f5f6fa', color: '#1a1a2e' }}>
+    <div className="min-h-screen bg-[#f5f6fa] text-[#1a1a2e]">
       {/* Header */}
-      <header style={{ background: '#1a237e', color: 'white', position: 'sticky', top: 0, zIndex: 50, boxShadow: '0 2px 8px rgba(0,0,0,0.2)' }}>
-        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 1.5rem' }}>
+      <header className="sticky top-0 z-50 bg-[#1a237e] text-white shadow-[0_2px_8px_rgba(0,0,0,0.2)]">
+        <div className="max-w-[1200px] mx-auto px-6">
           {/* Top bar */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-            <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', textDecoration: 'none', color: 'white' }}>
-              <div style={{ width: 40, height: 40, borderRadius: '0.5rem', background: '#ff6b35', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <BookOpen style={{ width: 22, height: 22 }} />
+          <div className="flex items-center justify-between py-3 border-b border-white/10">
+            <Link href="/" className="flex items-center gap-3 no-underline text-white">
+              <div className="w-10 h-10 rounded-lg bg-[#ff6b35] flex items-center justify-center">
+                <BookOpen className="w-5 h-5" />
               </div>
               <div>
-                <div style={{ fontWeight: 700, fontSize: '1.1rem', lineHeight: 1.2 }}>EbookAI</div>
-                <div style={{ fontSize: '0.65rem', opacity: 0.7, letterSpacing: '0.05em' }}>THƯ VIỆN SÁCH ĐIỆN TỬ</div>
+                <div className="font-bold text-[1.1rem] leading-[1.2]">EbookAI</div>
+                <div className="text-[0.65rem] opacity-70 tracking-wider">THƯ VIỆN SÁCH ĐIỆN TỬ</div>
               </div>
             </Link>
 
             {/* Search */}
-            <div style={{ flex: 1, maxWidth: 480, margin: '0 2rem', position: 'relative' }}>
-              <Search style={{ position: 'absolute', left: '0.875rem', top: '50%', transform: 'translateY(-50%)', width: 16, height: 16, color: '#999' }} />
+            <div className="flex-1 max-w-[480px] mx-8 relative">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#999]" />
               <input
                 value={search}
                 onChange={e => { setSearch(e.target.value); setActiveCategory(''); }}
                 placeholder="Tìm kiếm theo tên sách, tác giả, NXB..."
-                style={{ width: '100%', padding: '0.625rem 1rem 0.625rem 2.5rem', borderRadius: '2rem', border: 'none', background: 'white', color: '#1a1a2e', fontSize: '0.875rem', outline: 'none', boxSizing: 'border-box' }}
+                className="w-full py-2.5 px-4 pl-10 rounded-full border-none bg-white text-[#1a1a2e] text-sm outline-none"
               />
             </div>
 
             {/* Auth */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div className="flex items-center gap-3">
               {user ? (
                 <>
                   {isAdmin() && (
-                    <Link href="/admin" style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', color: '#ffcc02', textDecoration: 'none', fontSize: '0.875rem', fontWeight: 500 }}>
-                      <Upload style={{ width: 14, height: 14 }} /> Quản trị
+                    <Link href="/admin" className="flex items-center gap-1.5 text-[#ffcc02] no-underline text-sm font-medium">
+                      <Upload className="w-3.5 h-3.5" /> Quản trị
                     </Link>
                   )}
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.875rem', opacity: 0.9 }}>
-                    <User style={{ width: 14, height: 14 }} /> {user.username}
+                  <span className="flex items-center gap-1.5 text-sm opacity-90">
+                    <User className="w-3.5 h-3.5" /> {user.username}
                   </span>
-                  <button onClick={handleLogout} style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '0.5rem', padding: '0.375rem 0.75rem', color: 'white', cursor: 'pointer', fontSize: '0.8rem' }}>
-                    <LogOut style={{ width: 13, height: 13 }} /> Đăng xuất
+                  <button onClick={handleLogout} className="flex items-center gap-1.5 bg-white/15 border-none rounded-lg py-1.5 px-3 text-white cursor-pointer text-[0.8rem]">
+                    <LogOut className="w-3.5 h-3.5" /> Đăng xuất
                   </button>
                 </>
               ) : (
-                <Link href="/login" style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', background: '#ff6b35', borderRadius: '0.5rem', padding: '0.5rem 1rem', color: 'white', textDecoration: 'none', fontSize: '0.875rem', fontWeight: 500 }}>
-                  <LogIn style={{ width: 14, height: 14 }} /> Đăng nhập
+                <Link href="/login" className="flex items-center gap-1.5 bg-[#ff6b35] rounded-lg py-2 px-4 text-white no-underline text-sm font-medium">
+                  <LogIn className="w-3.5 h-3.5" /> Đăng nhập
                 </Link>
               )}
             </div>
@@ -127,21 +127,17 @@ export default function HomePage() {
 
           {/* Category nav */}
           {categoryNames.length > 0 && (
-            <div style={{ display: 'flex', gap: '0.25rem', padding: '0.5rem 0', overflowX: 'auto' }}>
+            <div className="flex gap-1 py-2 overflow-x-auto">
               <button
                 onClick={() => setActiveCategory('')}
-                style={{ whiteSpace: 'nowrap', padding: '0.375rem 0.875rem', borderRadius: '2rem', border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500,
-                  background: activeCategory === '' ? '#ff6b35' : 'rgba(255,255,255,0.12)',
-                  color: 'white' }}
+                className={`whitespace-nowrap py-1.5 px-3.5 rounded-full border-none cursor-pointer text-[0.8rem] font-medium text-white ${activeCategory === '' ? 'bg-[#ff6b35]' : 'bg-white/10'}`}
               >
                 Tất cả
               </button>
               {categoryNames.map(cat => (
                 <button key={cat}
                   onClick={() => { setActiveCategory(cat); setSearch(''); }}
-                  style={{ whiteSpace: 'nowrap', padding: '0.375rem 0.875rem', borderRadius: '2rem', border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500,
-                    background: activeCategory === cat ? '#ff6b35' : 'rgba(255,255,255,0.12)',
-                    color: 'white' }}
+                  className={`whitespace-nowrap py-1.5 px-3.5 rounded-full border-none cursor-pointer text-[0.8rem] font-medium text-white ${activeCategory === cat ? 'bg-[#ff6b35]' : 'bg-white/10'}`}
                 >
                   {cat}
                 </button>
@@ -152,43 +148,43 @@ export default function HomePage() {
       </header>
 
       {/* Main content */}
-      <main style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem 1.5rem' }}>
+      <main className="max-w-[1200px] mx-auto py-8 px-6">
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '5rem', color: '#999' }}>Đang tải...</div>
+          <div className="text-center py-20 text-[#999]">Đang tải...</div>
         ) : books.length === 0 ? (
           <EmptyState />
         ) : search || activeCategory ? (
           /* Search/filter result */
           <section>
-            <h2 style={{ fontSize: '1.125rem', fontWeight: 600, color: '#1a1a2e', marginBottom: '1.25rem' }}>
+            <h2 className="text-lg font-semibold text-[#1a1a2e] mb-5">
               {filtered.length > 0 ? `Kết quả tìm kiếm (${filtered.length} cuốn)` : 'Không tìm thấy kết quả'}
             </h2>
             <BookGrid books={filtered} />
           </section>
         ) : (
           /* Grouped by category */
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
+          <div className="flex flex-col gap-10">
             {Object.entries(grouped).map(([cat, catBooks]) => (
               <section key={cat}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <div style={{ width: 4, height: 24, borderRadius: 2, background: '#1a237e' }} />
-                    <h2 style={{ fontSize: '1.125rem', fontWeight: 700, color: '#1a1a2e', margin: 0 }}>{cat}</h2>
-                    <span style={{ fontSize: '0.8rem', color: '#999' }}>({catBooks.length} cuốn)</span>
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-1 h-6 rounded-[2px] bg-[#1a237e]" />
+                    <h2 className="text-lg font-bold text-[#1a1a2e] m-0">{cat}</h2>
+                    <span className="text-sm text-[#999]">({catBooks.length} cuốn)</span>
                   </div>
                   <button
                     onClick={() => setActiveCategory(cat === 'Chưa phân loại' ? '' : cat)}
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.8rem', color: '#1a237e', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}
+                    className="flex items-center gap-1 text-[0.8rem] text-[#1a237e] bg-none border-none cursor-pointer font-medium"
                   >
-                    Xem tất cả <ChevronRight style={{ width: 14, height: 14 }} />
+                    Xem tất cả <ChevronRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
                 {catBooks.length > 0 ? (
-                  <div style={{ display: 'flex', gap: '1rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
+                  <div className="flex gap-4 overflow-x-auto pb-2">
                     {catBooks.slice(0, 6).map(book => <BookCard key={book.id} book={book} horizontal />)}
                   </div>
                 ) : (
-                  <div style={{ padding: '2rem', textAlign: 'center', background: 'white', borderRadius: '0.75rem', color: '#999', fontSize: '0.875rem' }}>
+                  <div className="p-8 text-center bg-white rounded-xl text-[#999] text-sm">
                     Chưa có sách nào trong danh mục này
                   </div>
                 )}
@@ -199,7 +195,7 @@ export default function HomePage() {
       </main>
 
       {/* Footer */}
-      <footer style={{ background: '#1a237e', color: 'rgba(255,255,255,0.7)', textAlign: 'center', padding: '1.5rem', fontSize: '0.8rem', marginTop: '3rem' }}>
+      <footer className="bg-[#1a237e] text-white/70 text-center p-6 text-sm mt-12">
         © 2026 EbookAI — Nền tảng sách điện tử thông minh
       </footer>
     </div>
@@ -207,9 +203,9 @@ export default function HomePage() {
 }
 
 function BookGrid({ books }: { books: Book[] }) {
-  if (books.length === 0) return <p style={{ color: '#999' }}>Không có sách nào.</p>;
+  if (books.length === 0) return <p className="text-[#999]">Không có sách nào.</p>;
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '1.25rem' }}>
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-5">
       {books.map(book => <BookCard key={book.id} book={book} />)}
     </div>
   );
@@ -217,35 +213,34 @@ function BookGrid({ books }: { books: Book[] }) {
 
 function BookCard({ book, horizontal }: { book: Book; horizontal?: boolean }) {
   const coverBg = `hsl(${Math.abs(book.id.charCodeAt(0) * 37) % 360}, 55%, 35%)`;
-  const style = horizontal ? {
-    flexShrink: 0, width: 150, textDecoration: 'none', color: 'inherit',
-  } : { textDecoration: 'none', color: 'inherit' };
-
+  
   return (
-    <Link href={`/books/${book.id}`} style={style}>
-      <div style={{ background: 'white', borderRadius: '0.75rem', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', transition: 'transform 0.2s, box-shadow 0.2s', cursor: 'pointer' }}
-        onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-3px)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.12)'; }}
-        onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = ''; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'; }}
+    <Link href={`/books/${book.id}`} className={`no-underline text-inherit ${horizontal ? 'shrink-0 w-[150px]' : ''}`}>
+      <div 
+        className="bg-white rounded-xl overflow-hidden shadow-[0_2px_8px_rgba(0,0,0,0.08)] transition-all duration-200 cursor-pointer hover:-translate-y-[3px] hover:shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
       >
         {/* Cover */}
-        <div style={{ height: 200, background: book.cover_url ? undefined : coverBg, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+        <div 
+          className="h-[200px] flex items-center justify-center relative"
+          style={{ background: book.cover_url ? undefined : coverBg }}
+        >
           {book.cover_url
-            ? <img src={book.cover_url} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            : <BookOpen style={{ width: 48, height: 48, color: 'rgba(255,255,255,0.5)' }} />
+            ? <img src={book.cover_url} alt={book.title} className="w-full h-full object-cover" />
+            : <BookOpen className="w-12 h-12 text-white/50" />
           }
           {book.category && (
-            <span style={{ position: 'absolute', top: '0.5rem', left: '0.5rem', background: 'rgba(0,0,0,0.6)', color: 'white', fontSize: '0.65rem', padding: '0.2rem 0.5rem', borderRadius: '2rem' }}>
+            <span className="absolute top-2 left-2 bg-black/60 text-white text-[0.65rem] py-0.5 px-2 rounded-full">
               {book.category}
             </span>
           )}
         </div>
         {/* Info */}
-        <div style={{ padding: '0.75rem' }}>
-          <p style={{ fontWeight: 600, fontSize: '0.875rem', color: '#1a1a2e', margin: '0 0 0.25rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.4 }} title={book.title}>
+        <div className="p-3">
+          <p className="font-semibold text-sm text-[#1a1a2e] mb-1 line-clamp-2 leading-relaxed" title={book.title}>
             {book.title}
           </p>
-          {book.author && <p style={{ fontSize: '0.75rem', color: '#666', margin: '0 0 0.25rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{book.author}</p>}
-          {book.publisher && <p style={{ fontSize: '0.7rem', color: '#1a237e', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{book.publisher}{book.published_year ? ` · ${book.published_year}` : ''}</p>}
+          {book.author && <p className="text-xs text-[#666] mb-1 truncate">{book.author}</p>}
+          {book.publisher && <p className="text-[0.7rem] text-[#1a237e] m-0 truncate">{book.publisher}{book.published_year ? ` · ${book.published_year}` : ''}</p>}
         </div>
       </div>
     </Link>
@@ -254,9 +249,9 @@ function BookCard({ book, horizontal }: { book: Book; horizontal?: boolean }) {
 
 function EmptyState() {
   return (
-    <div style={{ textAlign: 'center', padding: '5rem 2rem', color: '#999' }}>
-      <BookOpen style={{ width: 64, height: 64, margin: '0 auto 1rem', opacity: 0.3 }} />
-      <p style={{ fontSize: '1.125rem', marginBottom: '0.5rem' }}>Chưa có sách nào trong thư viện</p>
+    <div className="text-center py-20 px-8 text-[#999]">
+      <BookOpen className="w-16 h-16 mx-auto mb-4 opacity-30" />
+      <p className="text-lg mb-2">Chưa có sách nào trong thư viện</p>
     </div>
   );
 }

@@ -121,6 +121,9 @@ async def reingest_book(
     supabase.table("books").update({"status": "processing"}).eq("id", book_id).execute()
 
     async def _do_reingest():
+        import logging
+        import traceback
+        logger = logging.getLogger("ebook.reingest")
         try:
             # Lấy danh sách ID các chunks cũ
             r = supabase.table("book_chunks").select("id").eq("book_id", book_id).execute()
@@ -131,25 +134,23 @@ async def reingest_book(
             for i in range(0, len(chunk_ids), batch_size):
                 batch = chunk_ids[i:i+batch_size]
                 supabase.table("book_chunks").delete().in_("id", batch).execute()
-                print(f"[REINGEST] Đã xóa chunks {i+1} - {i+len(batch)} / {len(chunk_ids)}", flush=True)
+                logger.info("Đã xóa chunks %d - %d / %d", i+1, i+len(batch), len(chunk_ids))
             
-            print(f"[REINGEST] Đã xóa hoàn toàn chunks cũ cho sách {book_id}", flush=True)
+            logger.info("Đã xóa hoàn toàn chunks cũ cho sách %s", book_id)
 
             # Download PDF
             file_path = book.get("file_path")
             pdf_bytes = supabase.storage.from_("books").download(file_path)
-            print(f"[REINGEST] Downloaded PDF: {len(pdf_bytes)} bytes", flush=True)
+            logger.info("Downloaded PDF: %d bytes", len(pdf_bytes))
 
             # Chạy lại pipeline ingestion
             await ingestion.run_ingestion_pipeline(book_id, pdf_bytes)
-            print(f"[REINGEST] Hoàn thành re-ingest cho sách {book_id}", flush=True)
+            logger.info("Hoàn thành re-ingest cho sách %s", book_id)
         except Exception as e:
-            print(f"[REINGEST] Lỗi: {e}", flush=True)
-            import traceback
-            traceback.print_exc()
+            logger.error("Lỗi reingest sách %s: %s", book_id, e)
+            logger.debug(traceback.format_exc())
             supabase.table("books").update({"status": "error"}).eq("id", book_id).execute()
 
-    import asyncio
-    asyncio.create_task(_do_reingest())
+    background_tasks.add_task(_do_reingest)
 
     return {"message": f"Đang re-ingest sách '{book['title']}'. Quá trình này mất vài phút.", "book_id": book_id}

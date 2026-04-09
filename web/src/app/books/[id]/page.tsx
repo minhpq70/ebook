@@ -4,8 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, BookOpen, Send, Loader2, User, Bot, ChevronDown, ChevronUp } from 'lucide-react';
 import { booksAPI, Book } from '@/lib/api';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://ebook-api-7v44.onrender.com/api/v1';
+import { API_BASE } from '@/lib/config';
 
 interface Message { role: 'user' | 'assistant'; content: string; }
 
@@ -41,6 +40,7 @@ export default function BookDetailPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ book_id: id, query: q, task_type: 'qa' }),
+        credentials: 'include',
       });
       if (!res.ok) throw new Error('Lỗi AI');
 

@@ -1,13 +1,18 @@
 """
 Auth Router
 - POST /auth/register       — Đăng ký tài khoản người dùng
-- POST /auth/login          — Đăng nhập (admin hoặc user)
+- POST /auth/login          — Đăng nhập → set httpOnly cookie
+- POST /auth/logout         — Đăng xuất → xóa cookie
 - GET  /auth/me             — Thông tin tài khoản hiện tại
 - POST /auth/change-password— Đổi mật khẩu (lưu vào Supabase)
 """
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, EmailStr
-from core.auth import hash_password, verify_password, create_jwt, get_current_user
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from core.auth import (
+    hash_password, verify_password, create_jwt,
+    get_current_user, get_cookie_settings, COOKIE_NAME,
+)
 from core.supabase_client import get_supabase
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -28,16 +33,25 @@ class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    role: str
-    username: str
+
+# ── Helper ────────────────────────────────────────────────────────────────────
+
+def _make_auth_response(user: dict, token: str) -> JSONResponse:
+    """Tạo response với httpOnly cookie chứa JWT token."""
+    response = JSONResponse(
+        content={
+            "role": user["role"],
+            "username": user["username"],
+            "message": "Đăng nhập thành công",
+        }
+    )
+    response.set_cookie(value=token, **get_cookie_settings())
+    return response
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-@router.post("/register", response_model=TokenResponse, status_code=201)
+@router.post("/register", status_code=201)
 async def register(req: RegisterRequest):
     """Đăng ký tài khoản người dùng (role=user)."""
     supabase = get_supabase()
@@ -56,12 +70,12 @@ async def register(req: RegisterRequest):
 
     user = result.data[0]
     token = create_jwt(user["id"], user["role"])
-    return TokenResponse(access_token=token, role=user["role"], username=user["username"])
+    return _make_auth_response(user, token)
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login")
 async def login(req: LoginRequest):
-    """Đăng nhập. Trả về JWT chứa user_id và role."""
+    """Đăng nhập. Set httpOnly cookie chứa JWT."""
     supabase = get_supabase()
 
     result = supabase.table("app_users").select("*").eq("username", req.username).execute()
@@ -75,7 +89,15 @@ async def login(req: LoginRequest):
         raise HTTPException(status_code=401, detail="Sai tên đăng nhập hoặc mật khẩu")
 
     token = create_jwt(user["id"], user["role"])
-    return TokenResponse(access_token=token, role=user["role"], username=user["username"])
+    return _make_auth_response(user, token)
+
+
+@router.post("/logout")
+async def logout():
+    """Đăng xuất — xóa httpOnly cookie."""
+    response = JSONResponse(content={"message": "Đã đăng xuất"})
+    response.delete_cookie(key=COOKIE_NAME, path="/")
+    return response
 
 
 @router.get("/me")
@@ -109,3 +131,4 @@ async def change_password(req: ChangePasswordRequest, user: dict = Depends(get_c
     }).eq("id", user["sub"]).execute()
 
     return {"message": "Đổi mật khẩu thành công"}
+

@@ -1,7 +1,12 @@
 # API
 api/venv/
+api/.venv/
 api/__pycache__/
 api/.env
+api/service_account.json
+api/logs/
+api/*.log
+api/reingest_check.txt
 
 # Web
 web/node_modules/
@@ -10,6 +15,11 @@ web/out/
 web/build/
 web/.env.local
 web/.env
+
+# Secrets — NEVER commit
+*.pem
+*.key
+service_account*.json
 
 # MacOS
 .DS_Store

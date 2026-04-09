@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { BookOpen, UserPlus, Eye, EyeOff, AlertCircle } from 'lucide-react';
-import { authAPI, setAuth } from '@/lib/auth';
+import { authAPI } from '@/lib/auth';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -24,7 +24,6 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       const res = await authAPI.register(username, password, email || undefined);
-      setAuth(res.access_token, { username: res.username, role: res.role as 'admin' | 'user' });
       router.replace('/'); // Về trang chủ thay vì /admin do user nòng cốt
     } catch (err: any) {
       setError(err.message || 'Đăng ký thất bại');
@@ -35,20 +34,20 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'radial-gradient(ellipse at top, #1a1f35 0%, #0f1117 60%)' }}>
-      <div style={{ width: '100%', maxWidth: 400 }}>
+      <div className="w-full max-w-[400px]">
         {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <div style={{ width: 56, height: 56, borderRadius: '1rem', background: '#6c63ff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
-            <BookOpen style={{ width: 28, height: 28, color: 'white' }} />
+        <div className="text-center mb-8">
+          <div className="w-14 h-14 rounded-2xl bg-[#6c63ff] inline-flex items-center justify-center mb-4">
+            <BookOpen className="w-7 h-7 text-white" />
           </div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'white', margin: 0 }}>EbookAI</h1>
-          <p style={{ color: '#8890a4', marginTop: '0.25rem', fontSize: '0.875rem' }}>Tạo tài khoản đọc sách AI</p>
+          <h1 className="text-2xl font-bold text-white m-0">EbookAI</h1>
+          <p className="text-[#8890a4] mt-1 text-sm">Tạo tài khoản đọc sách AI</p>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="card" style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <form onSubmit={handleSubmit} className="card p-8 flex flex-col gap-5">
           <div>
-            <label style={{ fontSize: '0.875rem', color: '#8890a4', display: 'block', marginBottom: '0.375rem' }}>Tên đăng nhập mới</label>
+            <label className="text-sm text-[#8890a4] block mb-1.5">Tên đăng nhập mới</label>
             <input
               className="input"
               placeholder="Nhập username..."
@@ -60,7 +59,7 @@ export default function RegisterPage() {
           </div>
 
           <div>
-            <label style={{ fontSize: '0.875rem', color: '#8890a4', display: 'block', marginBottom: '0.375rem' }}>Email (Tùy chọn)</label>
+            <label className="text-sm text-[#8890a4] block mb-1.5">Email (Tùy chọn)</label>
             <input
               className="input"
               type="email"
@@ -71,47 +70,46 @@ export default function RegisterPage() {
           </div>
 
           <div>
-            <label style={{ fontSize: '0.875rem', color: '#8890a4', display: 'block', marginBottom: '0.375rem' }}>Mật khẩu (Tối thiểu 8 ký tự)</label>
-            <div style={{ position: 'relative' }}>
+            <label className="text-sm text-[#8890a4] block mb-1.5">Mật khẩu (Tối thiểu 8 ký tự)</label>
+            <div className="relative">
               <input
-                className="input"
+                className="input pr-11"
                 type={showPass ? 'text' : 'password'}
                 placeholder="Nhập mật khẩu..."
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 required
-                style={{ paddingRight: '2.75rem' }}
                 minLength={8}
               />
               <button
                 type="button"
                 onClick={() => setShowPass(p => !p)}
-                style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#8890a4' }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 bg-none border-none cursor-pointer text-[#8890a4]"
               >
-                {showPass ? <EyeOff style={{ width: 16, height: 16 }} /> : <Eye style={{ width: 16, height: 16 }} />}
+                {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
           </div>
 
           {error && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '0.75rem', padding: '0.75rem' }}>
-              <AlertCircle style={{ width: 16, height: 16, color: '#ef4444', flexShrink: 0 }} />
-              <p style={{ fontSize: '0.875rem', color: '#ef4444' }}>{error}</p>
+            <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl p-3">
+              <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+              <p className="text-sm text-red-500">{error}</p>
             </div>
           )}
 
-          <button type="submit" disabled={loading} className="btn-primary" style={{ justifyContent: 'center', padding: '0.75rem', marginTop: '0.25rem' }}>
-            {loading ? 'Đang đăng ký...' : <><UserPlus style={{ width: 16, height: 16 }} /> Đăng ký ngay</>}
+          <button type="submit" disabled={loading} className="btn-primary justify-center p-3 mt-1">
+            {loading ? 'Đang đăng ký...' : <><UserPlus className="w-4 h-4" /> Đăng ký ngay</>}
           </button>
 
-          <p style={{ textAlign: 'center', color: '#8890a4', fontSize: '0.875rem' }}>
+          <p className="text-center text-[#8890a4] text-sm">
             Đã có tài khoản?{' '}
-            <Link href="/login" style={{ color: '#6c63ff', textDecoration: 'none' }}>Đăng nhập</Link>
+            <Link href="/login" className="text-[#6c63ff] no-underline">Đăng nhập</Link>
           </p>
         </form>
 
-        <p style={{ textAlign: 'center', marginTop: '1.5rem' }}>
-          <Link href="/" style={{ color: '#8890a4', fontSize: '0.875rem', textDecoration: 'none' }}>← Về trang chủ</Link>
+        <p className="text-center mt-6">
+          <Link href="/" className="text-[#8890a4] text-sm no-underline">← Về trang chủ</Link>
         </p>
       </div>
     </div>

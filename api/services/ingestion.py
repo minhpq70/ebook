@@ -4,13 +4,18 @@ Book Ingestion Service
 - Tạo record trong table books
 - Trigger pipeline: chunk → embed → store vectors
 """
+from __future__ import annotations
+
 import asyncio
+import logging
 import unicodedata
 import re
 from core.supabase_client import get_supabase
 from core.config import settings
 from .pdf_processor import process_pdf, TextChunk
 from .embedding import embed_batch
+
+logger = logging.getLogger("ebook.ingestion")
 
 
 STORAGE_BUCKET = "books"
@@ -127,9 +132,8 @@ async def run_ingestion_pipeline(book_id: str, pdf_bytes: bytes) -> None:
         supabase.table("books").update(update_data).eq("id", book_id).execute()
 
     except Exception as e:
-        print(f"Ingestion pipeline error: {e}")
+        logger.error("Ingestion pipeline error for book %s: %s", book_id, e, exc_info=True)
         supabase.table("books").update({"status": "error"}).eq("id", book_id).execute()
-        # Vẫn reraise exception để có log chi tiết nếu cần
         raise e
 
 
@@ -205,6 +209,6 @@ def delete_book(book_id: str) -> None:
         # Xóa file trong Storage
         try:
             supabase.storage.from_(STORAGE_BUCKET).remove([book["file_path"]])
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Không thể xóa file storage cho book %s: %s", book_id, e)
         supabase.table("books").delete().eq("id", book_id).execute()

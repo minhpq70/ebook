@@ -50,7 +50,7 @@ async def expand_query(query: str) -> list[str]:
         return [query]
 
 
-async def embed_expanded_queries(queries: list[str], embed_fn) -> list[float]:
+async def embed_expanded_queries(queries: list[str]) -> list[float]:
     """
     Embed nhiều query variants, trả về embedding trung bình (centroid).
     Centroid embedding tốt hơn single query embedding vì bao phủ nhiều hướng ngữ nghĩa.

@@ -6,6 +6,8 @@ Flow:
   3. Hybrid search (vector + FTS) với top_k * 3 candidates
   4. Semantic reranking để chọn top_k chunks chất lượng nhất
 """
+from __future__ import annotations
+
 from core.supabase_client import get_supabase
 from core.config import settings
 from models.schemas import ChunkInfo
@@ -45,7 +47,7 @@ async def retrieve_chunks(
 
     # ── Bước 2: Centroid Embedding ───────────────────────────────
     if len(query_variants) > 1:
-        query_embedding = await embed_expanded_queries(query_variants, embed_batch)
+        query_embedding = await embed_expanded_queries(query_variants)
     else:
         query_embedding = await embed_text(query)
 

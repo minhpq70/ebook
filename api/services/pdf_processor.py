@@ -7,6 +7,7 @@ PDF Processor Service
 """
 import io
 import re
+import logging
 from dataclasses import dataclass
 from pypdf import PdfReader
 import fitz
@@ -17,6 +18,8 @@ import tiktoken
 
 from core.config import settings
 
+logger = logging.getLogger("ebook.pdf")
+
 
 @dataclass
 class TextChunk:
@@ -26,10 +29,13 @@ class TextChunk:
     token_count: int
 
 
+# Cache tiktoken encoding ở module level — tránh khởi tạo lại mỗi lần gọi
+_ENCODING = tiktoken.get_encoding("cl100k_base")
+
+
 def _count_tokens(text: str) -> int:
     """Đếm tokens dùng cl100k_base (compatible với OpenAI models)."""
-    enc = tiktoken.get_encoding("cl100k_base")
-    return len(enc.encode(text))
+    return len(_ENCODING.encode(text))
 
 
 def _clean_text(text: str) -> str:
@@ -95,7 +101,7 @@ def extract_pages_from_pdf(pdf_bytes: bytes) -> list[dict]:
         
         # Đánh giá encoding
         if not is_valid_vietnamese_text(raw_text):
-            print(f"Trang {i+1} phát hiện lỗi font/encoding. Fallback to OCR...")
+            logger.info("Trang %d phát hiện lỗi font/encoding. Fallback to OCR...", i+1)
             try:
                 # Render trang thành ảnh với độ phân giải đủ đọc
                 pix = page.get_pixmap(dpi=300)
@@ -103,7 +109,7 @@ def extract_pages_from_pdf(pdf_bytes: bytes) -> list[dict]:
                 # Chạy OCR
                 raw_text = pytesseract.image_to_string(img, lang="vie")
             except Exception as e:
-                print(f"Lỗi OCR trang {i+1}: {e}")
+                logger.warning("Lỗi OCR trang %d: %s", i+1, e)
                 # Nếu OCR lỗi, vẫn giữ lại raw_text lỗi thay vì bỏ trống hoàn toàn
 
         text = _clean_text(raw_text)
@@ -127,7 +133,7 @@ def chunk_pages(pages: list[dict]) -> list[TextChunk]:
     - Chunk nhỏ hơn (300 tokens) → precision cao hơn khi retrieve
     - Overlap lớn hơn (80 tokens) → không mất context giữa chunks
     """
-    enc = tiktoken.get_encoding("cl100k_base")
+    enc = _ENCODING
 
     def _token_len(text: str) -> int:
         return len(enc.encode(text))
@@ -191,6 +197,6 @@ def process_pdf(pdf_bytes: bytes) -> tuple[list[TextChunk], int]:
                 token_count=_count_tokens(toc_text)
             ))
     except Exception as e:
-        print(f"Lỗi thêm TOC chunk: {e}")
+        logger.warning("Lỗi thêm TOC chunk: %s", e)
 
     return chunks, total_pages

@@ -1,5 +1,4 @@
-const rawUrl = (process.env.NEXT_PUBLIC_API_URL || 'https://ebook-api-7v44.onrender.com/api/v1').replace(/\/$/, '');
-const API_BASE = rawUrl.endsWith('/api/v1') ? rawUrl : `${rawUrl}/api/v1`;
+import { API_BASE } from './config';
 
 export interface Book {
   id: string;
@@ -40,18 +39,13 @@ export interface RAGQueryResponse {
 export type TaskType = 'qa' | 'explain' | 'summarize_chapter' | 'summarize_book' | 'suggest';
 
 async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
-  // Tự động đính kèm Bearer token nếu đã đăng nhập
-  let token: string | null = null;
-  if (typeof window !== 'undefined') {
-    token = localStorage.getItem('ebook_token');
-  }
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
       ...options?.headers,
     },
+    credentials: 'include',  // ← browser tự gửi httpOnly cookie
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
@@ -70,7 +64,6 @@ export const booksAPI = {
     file: File,
     metadata: { title: string; author?: string; publisher?: string; published_year?: string; category?: string; page_size?: string; description?: string; language?: string }
   ) => {
-    const { getToken } = await import('@/lib/auth');
     const form = new FormData();
     form.append('file', file);
     form.append('title', metadata.title);
@@ -82,10 +75,12 @@ export const booksAPI = {
     if (metadata.description) form.append('description', metadata.description);
     form.append('language', metadata.language || 'vi');
 
-    const token = getToken();
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(`${API_BASE}/books/upload`, { method: 'POST', headers, body: form });
+    // Upload dùng FormData — KHÔNG set Content-Type (browser tự thêm boundary)
+    const res = await fetch(`${API_BASE}/books/upload`, {
+      method: 'POST',
+      body: form,
+      credentials: 'include',  // ← auth qua cookie
+    });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
       throw new Error(err.detail || 'Lỗi upload');

@@ -106,5 +106,4 @@ async def log_query(
             logger.error("sheets_logger: lỗi ghi row — %s", e)
 
     # Chạy trong thread pool để không block event loop
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, _write)
+    await asyncio.to_thread(_write)

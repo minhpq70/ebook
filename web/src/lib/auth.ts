@@ -1,30 +1,25 @@
 /**
- * Auth utilities — token management + API fetch với Auth header
+ * Auth utilities — httpOnly cookie auth + API fetch
+ *
+ * Token JWT được lưu trong httpOnly cookie bởi server.
+ * JavaScript KHÔNG truy cập được token → an toàn trước XSS.
+ * Browser tự gửi cookie kèm mỗi request nhờ credentials: 'include'.
+ *
+ * localStorage chỉ lưu thông tin user (role, username) để hiển thị UI.
  */
+import { API_BASE } from './config';
 
-const TOKEN_KEY = 'ebook_token';
-const USER_KEY  = 'ebook_user';
+const USER_KEY = 'ebook_user';
 
 export interface AuthUser {
   username: string;
   role: 'admin' | 'user';
 }
 
-// ── Token ─────────────────────────────────────────────────────────────────────
+// ── User Info (UI only — KHÔNG chứa token) ───────────────────────────────────
 
-export function getToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(TOKEN_KEY);
-}
-
-export function setAuth(token: string, user: AuthUser) {
-  localStorage.setItem(TOKEN_KEY, token);
+export function setUser(user: AuthUser) {
   localStorage.setItem(USER_KEY, JSON.stringify(user));
-}
-
-export function clearAuth() {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(USER_KEY);
 }
 
 export function getUser(): AuthUser | null {
@@ -34,28 +29,32 @@ export function getUser(): AuthUser | null {
   try { return JSON.parse(raw); } catch { return null; }
 }
 
+export function clearAuth() {
+  localStorage.removeItem(USER_KEY);
+}
+
 export function isLoggedIn(): boolean {
-  return !!getToken();
+  return !!getUser();
 }
 
 export function isAdmin(): boolean {
   return getUser()?.role === 'admin';
 }
 
-// ── Fetch với Bearer token ────────────────────────────────────────────────────
-
-const rawUrl = (process.env.NEXT_PUBLIC_API_URL || 'https://ebook-api-7v44.onrender.com/api/v1').replace(/\/$/, '');
-const API_BASE = rawUrl.endsWith('/api/v1') ? rawUrl : `${rawUrl}/api/v1`;
+// ── Fetch với httpOnly cookie ────────────────────────────────────────────────
 
 async function authFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = getToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
   };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers,
+    credentials: 'include',  // ← browser tự gửi httpOnly cookie
+  });
+
   if (res.status === 401) {
     clearAuth();
     if (typeof window !== 'undefined') window.location.href = '/login';
@@ -76,12 +75,16 @@ export const authAPI = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
+      credentials: 'include',  // ← nhận httpOnly cookie từ server
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: 'Sai tên đăng nhập hoặc mật khẩu' }));
       throw new Error(err.detail);
     }
-    return res.json() as Promise<{ access_token: string; role: string; username: string }>;
+    const data = await res.json() as { role: string; username: string; message: string };
+    // Lưu user info cho UI (token đã nằm trong cookie, JS không lấy được)
+    setUser({ username: data.username, role: data.role as 'admin' | 'user' });
+    return data;
   },
 
   register: async (username: string, password: string, email?: string) => {
@@ -89,12 +92,23 @@ export const authAPI = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password, email }),
+      credentials: 'include',
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: 'Đăng ký thất bại' }));
       throw new Error(err.detail);
     }
-    return res.json() as Promise<{ access_token: string; role: string; username: string }>;
+    const data = await res.json() as { role: string; username: string; message: string };
+    setUser({ username: data.username, role: data.role as 'admin' | 'user' });
+    return data;
+  },
+
+  logout: async () => {
+    await fetch(`${API_BASE}/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    clearAuth();
   },
 
   changePassword: (currentPassword: string, newPassword: string) =>
@@ -104,15 +118,65 @@ export const authAPI = {
     }),
 };
 
+// ── Admin API Types ──────────────────────────────────────────────────────────
+
+interface AIModelInfo {
+  id: string;
+  name: string;
+  input_price: number;
+  output_price: number;
+}
+
+interface EmbeddingModelInfo {
+  id: string;
+  name: string;
+  price: number;
+}
+
+interface AIProvider {
+  name: string;
+  chat_models: AIModelInfo[];
+  embedding_models: EmbeddingModelInfo[];
+}
+
+interface AIConfig {
+  provider: string;
+  chat_model: string;
+  embedding_model: string;
+  updated_at?: string;
+}
+
+interface AIConfigResponse {
+  current: AIConfig;
+  providers: Record<string, AIProvider>;
+}
+
+interface LogEntry {
+  timestamp: string;
+  [key: string]: string;
+}
+
+interface LogsResponse {
+  logs: LogEntry[];
+  total: number;
+  note?: string;
+}
+
+interface UpdateBookResponse {
+  message: string;
+  book: Record<string, unknown>;
+}
+
 // ── Admin API ─────────────────────────────────────────────────────────────────
 
 export const adminAPI = {
-  getConfig:   () => authFetch<any>('/admin/config'),
+  getConfig:   () => authFetch<AIConfigResponse>('/admin/config'),
   updateConfig: (data: { provider: string; chat_model: string; embedding_model: string }) =>
-    authFetch<any>('/admin/config', { method: 'PUT', body: JSON.stringify(data) }),
-  getLogs:     (lines = 100) => authFetch<any>(`/admin/logs?lines=${lines}`),
+    authFetch<{ message: string; config: AIConfig }>('/admin/config', { method: 'PUT', body: JSON.stringify(data) }),
+  getLogs:     (lines = 100) => authFetch<LogsResponse>(`/admin/logs?lines=${lines}`),
   updateBook:  (id: string, data: Record<string, string>) =>
-    authFetch<any>(`/admin/books/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    authFetch<UpdateBookResponse>(`/admin/books/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
 };
 
 export { authFetch };
+

@@ -1,0 +1,37 @@
+name: Python Tests
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./api
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.10"
+        cache: 'pip' # caching pip dependencies
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install core/ requirements.txt
+        pip install pydantic pydantic-settings numpy tiktoken openai
+        pip install pytest pytest-asyncio
+
+    - name: Run Pytest
+      env:
+        # Giả lập env để vượt qua config validation nếu cần, dù conftest đã có
+        JWT_SECRET: "test-secret-key-for-unit-tests-only-32chars!"
+      run: |
+        pytest tests/ -v

@@ -7,9 +7,8 @@ import {
   ChevronUp, ChevronDown, ExternalLink, MessageSquare, Menu
 } from 'lucide-react';
 import { booksAPI, Book, ChunkInfo, TaskType } from '@/lib/api';
+import { API_BASE } from '@/lib/config';
 import PDFViewer from '@/components/PDFViewer';
-
-const API_BASE = 'https://ebook-api-7v44.onrender.com/api/v1';
 
 type Message = {
   id: string;
@@ -79,6 +78,7 @@ export default function ReaderPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ book_id: id, query, task_type: taskType }),
+        credentials: 'include',
       });
 
       if (!res.ok) {

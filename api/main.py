@@ -73,14 +73,17 @@ from fastapi.exceptions import HTTPException as FastAPIHTTPException
 
 @app.exception_handler(FastAPIHTTPException)
 async def cors_aware_http_exception_handler(request: Request, exc: FastAPIHTTPException):
-    origin = request.headers.get("origin", "*")
+    origin = request.headers.get("origin", "")
+    # Chỉ trả về CORS header nếu origin nằm trong whitelist
+    allowed = origin if origin in settings.cors_origins else ""
+    headers = {}
+    if allowed:
+        headers["Access-Control-Allow-Origin"] = allowed
+        headers["Access-Control-Allow-Credentials"] = "true"
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": exc.detail},
-        headers={
-            "Access-Control-Allow-Origin": origin,
-            "Access-Control-Allow-Credentials": "true",
-        },
+        headers=headers,
     )
 
 

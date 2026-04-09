@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { BookOpen, Upload, Trash2, Eye, ArrowLeft, Loader2, Settings, FileText, Edit2, Check, X, LogOut } from 'lucide-react';
 import { booksAPI, Book, categoriesAPI } from '@/lib/api';
-import { adminAPI, authAPI, clearAuth, getUser } from '@/lib/auth';
+import { adminAPI, authAPI, getUser } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 
 type Tab = 'books' | 'logs' | 'config';
@@ -122,7 +122,7 @@ export default function AdminPage() {
           <div className="flex items-center gap-3">
             <Link href="/admin/categories" className="btn-ghost px-3 py-2 text-sm">🗂 Quản lý Danh mục</Link>
             <Link href="/admin/upload" className="btn-primary"><Upload className="w-4 h-4" /> Upload sách</Link>
-            <button onClick={() => { clearAuth(); router.replace('/login'); }} className="btn-ghost px-3 py-2" title="Đăng xuất">
+            <button onClick={async () => { await authAPI.logout(); router.replace('/login'); }} className="btn-ghost px-3 py-2" title="Đăng xuất">
               <LogOut className="w-4 h-4" />
             </button>
           </div>

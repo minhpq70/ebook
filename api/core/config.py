@@ -1,3 +1,4 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,9 +28,22 @@ class Settings(BaseSettings):
     app_cors_origins: str = "http://localhost:3000"
 
     # Auth — đặt giá trị ngẫu nhiên mạnh trong .env, KHÔNG commit lên GitHub
-    jwt_secret: str = "CHANGE_ME_USE_STRONG_SECRET_IN_DOT_ENV"
+    jwt_secret: str = ""
     jwt_expire_hours: int = 24          # token người dùng hết hạn sau 24h
-    embed_secret: str = "CHANGE_ME_EMBED_SECRET"  # shared secret với hệ thống NXB
+    embed_secret: str = ""              # shared secret với hệ thống NXB
+
+    @model_validator(mode="after")
+    def _validate_secrets(self):
+        """Fail fast nếu JWT secret chưa được cấu hình đúng."""
+        _unsafe = {"", "CHANGE_ME_USE_STRONG_SECRET_IN_DOT_ENV", "CHANGE_ME_EMBED_SECRET"}
+        if self.jwt_secret in _unsafe:
+            raise ValueError(
+                "JWT_SECRET chưa được cấu hình! "
+                "Hãy đặt giá trị ngẫu nhiên mạnh trong file .env"
+            )
+        if len(self.jwt_secret) < 32:
+            raise ValueError("JWT_SECRET phải có ít nhất 32 ký tự")
+        return self
 
     @property
     def cors_origins(self) -> list[str]:

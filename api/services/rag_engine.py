@@ -5,11 +5,16 @@ RAG Engine — Prompt Orchestration + LLM Call
 - Streaming support
 - Log query vào Supabase
 """
+from __future__ import annotations
+
 import time
+import logging
 from core.openai_client import get_openai
 from core.supabase_client import get_supabase
 from core.config import settings
 from models.schemas import ChunkInfo, RAGQueryResponse
+
+logger = logging.getLogger("ebook.rag")
 
 
 # ============================================================
@@ -208,8 +213,8 @@ def _log_query(
             "tokens_used": tokens_used,
             "latency_ms": latency_ms,
         }).execute()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Lỗi ghi query log vào Supabase: %s", e)
 
 
 async def stream_rag_query(

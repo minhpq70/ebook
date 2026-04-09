@@ -3,6 +3,7 @@ RAG Router
 - POST /rag/query        — Hỏi đáp (blocking, đầy đủ response)
 - POST /rag/query/stream — Hỏi đáp (SSE streaming, text xuất hiện dần)
 """
+import asyncio
 import json
 import logging
 from fastapi import APIRouter, HTTPException
@@ -141,8 +142,6 @@ async def query_book_stream(req: RAGQueryRequest):
                 mode="STREAM", book_id=req.book_id, task_type=req.task_type,
                 query=req.query, tokens_used=tokens_used, cost_usd=cost,
             ))
-
-    import asyncio # Cho asyncio.create_task
 
     return StreamingResponse(
         generate(),

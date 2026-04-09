@@ -1,5 +1,7 @@
+from __future__ import annotations
 import io
 import json
+import logging
 import fitz  # PyMuPDF
 import pytesseract
 from PIL import Image
@@ -7,6 +9,8 @@ from core.openai_client import get_openai
 from core.config import settings
 from .pdf_processor import is_valid_vietnamese_text
 import re
+
+logger = logging.getLogger("ebook.metadata")
 def extract_early_text(pdf_bytes: bytes, max_pages: int = 5) -> str:
     """Trích xuất text từ n trang đầu tiên bằng PyMuPDF, kèm OCR fallback."""
     try:
@@ -29,7 +33,7 @@ def extract_early_text(pdf_bytes: bytes, max_pages: int = 5) -> str:
         doc.close()
         return text.strip()
     except Exception as e:
-        print(f"Lỗi extract text: {e}")
+        logger.warning("Lỗi extract text: %s", e)
         return ""
 
 def get_cover_image_bytes(pdf_bytes: bytes) -> bytes | None:
@@ -47,7 +51,7 @@ def get_cover_image_bytes(pdf_bytes: bytes) -> bytes | None:
         doc.close()
         return img_bytes
     except Exception as e:
-        print(f"Lỗi trích xuất ảnh bìa: {e}")
+        logger.warning("Lỗi trích xuất ảnh bìa: %s", e)
         return None
 
 def extract_toc(pdf_bytes: bytes) -> str | None:
@@ -108,7 +112,7 @@ def extract_toc(pdf_bytes: bytes) -> str | None:
 
         return None
     except Exception as e:
-        print(f"Lỗi trích xuất Mục lục: {e}")
+        logger.warning("Lỗi trích xuất Mục lục: %s", e)
         return None
 
 async def generate_ai_summary(pdf_bytes: bytes) -> str | None:
@@ -137,7 +141,7 @@ Nếu văn bản vô nghĩa hoặc không đủ dữ liệu, hãy trả về 'Kh
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        print(f"Lỗi tạo AI summary: {e}")
+        logger.warning("Lỗi tạo AI summary: %s", e)
         return None
 
 async def extract_metadata_from_pdf(pdf_bytes: bytes) -> dict:
@@ -176,6 +180,6 @@ Trả về định dạng JSON nghiêm ngặt với các trường sau:
             data = json.loads(result_text)
             return data
     except Exception as e:
-        print(f"Lỗi gọi OpenAI metadata: {e}")
+        logger.warning("Lỗi gọi OpenAI metadata: %s", e)
         
     return {}

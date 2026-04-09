@@ -3,6 +3,8 @@ AI Config Service
 - Load/save cấu hình provider + model từ bảng ai_config trong Supabase
 - Bảng giá model (cập nhật thủ công theo tháng)
 """
+from __future__ import annotations
+
 from core.supabase_client import get_supabase
 
 # ── Danh sách Provider và Model ───────────────────────────────────────────────

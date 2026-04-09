@@ -4,6 +4,8 @@ Reranker Service
 - Tính cosine similarity giữa query embedding và từng chunk
 - Rerank và trả về top-k chunks chất lượng nhất
 """
+from __future__ import annotations
+
 import numpy as np
 from models.schemas import ChunkInfo
 from services.embedding import embed_text, embed_batch

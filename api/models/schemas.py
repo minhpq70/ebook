@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
+from enum import Enum
 
 
 # ============================================================
@@ -51,7 +52,7 @@ class ChunkInfo(BaseModel):
 # ============================================================
 # RAG Query Schemas
 # ============================================================
-class TaskType(str):
+class TaskType(str, Enum):
     QA = "qa"
     EXPLAIN = "explain"
     SUMMARIZE_CHAPTER = "summarize_chapter"
