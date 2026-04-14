@@ -9,6 +9,7 @@ from core.openai_client import get_openai, get_chat_openai
 from core.config import settings
 from .pdf_processor import is_valid_vietnamese_text
 import re
+import asyncio
 
 logger = logging.getLogger("ebook.metadata")
 def extract_early_text(pdf_bytes: bytes, max_pages: int = 5) -> str:
@@ -119,7 +120,7 @@ async def generate_ai_summary(pdf_bytes: bytes) -> str | None:
     """
     Dùng AI tóm tắt nội dung sách dựa trên các trang đầu (những trang thường chứa tóm tắt/lời nói đầu).
     """
-    text = extract_early_text(pdf_bytes, max_pages=15)
+    text = await asyncio.to_thread(extract_early_text, pdf_bytes, 15)
     if not text:
         return None
 
@@ -149,7 +150,7 @@ async def extract_metadata_from_pdf(pdf_bytes: bytes) -> dict:
     Trích xuất text trang bìa và gửi lên GPT để lấy metadata.
     Trả về dict: {"title": "", "author": "", "publisher": "", "published_year": ""}
     """
-    text = extract_early_text(pdf_bytes, max_pages=3)
+    text = await asyncio.to_thread(extract_early_text, pdf_bytes, 3)
     if not text:
         return {}
 

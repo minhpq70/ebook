@@ -8,6 +8,7 @@ RAG Engine — Prompt Orchestration + LLM Call
 from __future__ import annotations
 
 import time
+import asyncio
 import logging
 from core.openai_client import get_openai, get_chat_openai
 from core.supabase_client import get_supabase
@@ -168,8 +169,9 @@ async def run_rag_query(
     tokens_used = response.usage.total_tokens if response.usage else None
     latency_ms = int((time.time() - start_time) * 1000)
 
-    # Log vào Supabase (async fire-and-forget)
-    _log_query(
+    # Log vào Supabase (async fire-and-forget qua thread)
+    asyncio.create_task(asyncio.to_thread(
+        _log_query,
         book_id=book_id,
         query=query,
         task_type=task_type,
@@ -178,7 +180,7 @@ async def run_rag_query(
         model=settings.openai_chat_model,
         tokens_used=tokens_used,
         latency_ms=latency_ms,
-    )
+    ))
 
     return RAGQueryResponse(
         query=query,
@@ -296,8 +298,9 @@ async def stream_rag_query(
     yield f"data: {json.dumps({'type': 'done', 'data': {'tokens_used': tokens_used, 'latency_ms': latency_ms}})}\n\n"
     yield "data: [DONE]\n\n"
 
-    # Log vào Supabase
-    _log_query(
+    # Log vào Supabase qua thread ngầm để không chặn
+    asyncio.create_task(asyncio.to_thread(
+        _log_query,
         book_id=book_id,
         query=query,
         task_type=task_type,
@@ -306,5 +309,5 @@ async def stream_rag_query(
         model=settings.openai_chat_model,
         tokens_used=tokens_used,
         latency_ms=latency_ms,
-    )
+    ))
 
