@@ -109,5 +109,7 @@ Khi ready migrate khỏi Supabase:
 2. Thay `SUPABASE_URL` và `SUPABASE_SERVICE_KEY` bằng connection string PostgreSQL
 3. Thay `supabase_client.py` bằng `asyncpg` hoặc `psycopg2`
 4. Functions `hybrid_search` trong SQL giữ nguyên (tương thích)
-
-
+=======
+# ebook
+Khai thác ebook nhờ AI
+>>>>>>> db00c2d1c230ad3b4b118cb3d2a5d66ae31e720c

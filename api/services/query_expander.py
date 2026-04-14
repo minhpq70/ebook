@@ -4,7 +4,7 @@ Query Expansion Service
 - Giúp tăng recall khi tìm kiếm (cùng ý nhưng cách diễn đạt khác)
 - Dùng OpenAI GPT-4o-mini (nhanh + rẻ)
 """
-from core.openai_client import get_openai
+from core.openai_client import get_openai, get_chat_openai
 from core.config import settings
 
 
@@ -30,7 +30,7 @@ async def expand_query(query: str) -> list[str]:
     Returns: [query_gốc, paraphrase_1, paraphrase_2]
     """
     try:
-        client = get_openai()
+        client = get_chat_openai()
         response = await client.chat.completions.create(
             model=settings.openai_chat_model,
             messages=[

@@ -5,7 +5,7 @@ import logging
 import fitz  # PyMuPDF
 import pytesseract
 from PIL import Image
-from core.openai_client import get_openai
+from core.openai_client import get_openai, get_chat_openai
 from core.config import settings
 from .pdf_processor import is_valid_vietnamese_text
 import re
@@ -27,7 +27,7 @@ def extract_early_text(pdf_bytes: bytes, max_pages: int = 5) -> str:
                     if len(ocr_text.strip()) > len(page_text.strip()):
                         page_text = ocr_text
                 except Exception as e:
-                    pass
+                    logger.warning(f"Lỗi OCR trang {i} (Tesseract chưa cài đặt hoặc thiếu model vie): {e}")
             if page_text:
                 text += page_text + "\n\n"
         doc.close()
@@ -128,7 +128,7 @@ Dựa vào đoạn văn bản trích xuất từ phần đầu của một cuố
 hãy viết một đoạn tóm tắt ngắn gọn, hấp dẫn về nội dung cuốn sách (khoảng 3-5 câu). 
 Nếu văn bản vô nghĩa hoặc không đủ dữ liệu, hãy trả về 'Không có đủ thông tin để tóm tắt.'"""
 
-    client = get_openai()
+    client = get_chat_openai()
     try:
         response = await client.chat.completions.create(
             model=settings.openai_chat_model,
@@ -162,7 +162,7 @@ Trả về định dạng JSON nghiêm ngặt với các trường sau:
 - publisher: Nhà xuất bản
 - published_year: Năm xuất bản (chỉ lấy số năm, hoặc string nếu không rõ, ví dụ "2023" hoặc "Thập niên 90")"""
 
-    client = get_openai()
+    client = get_chat_openai()
     try:
         response = await client.chat.completions.create(
             model=settings.openai_chat_model,

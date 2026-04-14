@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import time
 import logging
-from core.openai_client import get_openai
+from core.openai_client import get_openai, get_chat_openai
 from core.supabase_client import get_supabase
 from core.config import settings
 from models.schemas import ChunkInfo, RAGQueryResponse
@@ -152,8 +152,8 @@ async def run_rag_query(
     # Temperature = 0 cho mục lục (sao chép nguyên văn), 0.2 cho câu hỏi thường
     temperature = 0.0 if is_toc else 0.2
 
-    # Gọi OpenAI — chỉ gửi query + chunks, KHÔNG có toàn bộ sách
-    client = get_openai()
+    # Gọi OpenAI (Hoặc Local LLM) — chỉ gửi query + chunks, KHÔNG có toàn bộ sách
+    client = get_chat_openai()
     response = await client.chat.completions.create(
         model=settings.openai_chat_model,
         messages=[
@@ -262,8 +262,8 @@ async def stream_rag_query(
     # Temperature = 0 cho mục lục (sao chép nguyên văn), 0.2 cho câu hỏi thường
     temperature = 0.0 if is_toc else 0.2
 
-    # Stream tokens từ OpenAI
-    client = get_openai()
+    # Stream tokens từ OpenAI (Hoặc Local LLM)
+    client = get_chat_openai()
     full_answer = ""
     tokens_used = None
 

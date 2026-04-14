@@ -17,6 +17,8 @@ web/.env.local
 web/.env
 
 # Secrets — NEVER commit
+.env
+.env.remoat
 *.pem
 *.key
 service_account*.json

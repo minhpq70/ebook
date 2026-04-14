@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     openai_chat_model: str = "gpt-4o-mini"
     openai_max_tokens: int = 4000
 
+    # Local LLM (Tuỳ chọn cho Qwen, Gemma)
+    openai_chat_base_url: str | None = None
+    openai_chat_api_key: str | None = None
+
     # Supabase
     supabase_url: str
     supabase_service_key: str
