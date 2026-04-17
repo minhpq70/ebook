@@ -61,6 +61,8 @@ class CacheManager:
 
     async def get_redis(self) -> Redis:
         """Lazy initialization of Redis connection"""
+        if not settings.redis_enabled:
+            return None
         if self._redis is None:
             try:
                 self._redis = Redis.from_url(

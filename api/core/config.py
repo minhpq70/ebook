@@ -66,6 +66,7 @@ class Settings(BaseSettings):
     google_sa_json: str = ""            # JSON string hoặc base64 encoded
     
     # Redis (cho caching)
+    redis_enabled: bool = True
     redis_url: str = "redis://localhost:6379"  # Default Redis URL
 
     @property
