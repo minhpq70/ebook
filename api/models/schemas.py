@@ -103,5 +103,8 @@ class RAGQueryResponse(BaseModel):
 class IngestionStatus(BaseModel):
     book_id: str
     status: str
+    total_pages: Optional[int] = None
+    processed_pages: Optional[int] = None
     total_chunks: Optional[int] = None
+    stored_chunks: Optional[int] = None
     message: Optional[str] = None

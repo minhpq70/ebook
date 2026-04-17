@@ -4,8 +4,12 @@ Query Expansion Service
 - Giúp tăng recall khi tìm kiếm (cùng ý nhưng cách diễn đạt khác)
 - Dùng OpenAI GPT-4o-mini (nhanh + rẻ)
 """
-from core.openai_client import get_openai, get_chat_openai
+import hashlib
+
+from core.openai_client import get_chat_openai
 from core.config import settings
+from core.redis_client import get_cache_manager
+from services.metrics_registry import get_metrics_registry
 
 
 EXPAND_SYSTEM_PROMPT = """Bạn là chuyên gia ngôn ngữ tiếng Việt. 
@@ -29,6 +33,15 @@ async def expand_query(query: str) -> list[str]:
     
     Returns: [query_gốc, paraphrase_1, paraphrase_2]
     """
+    query_hash = hashlib.md5(query.strip().lower().encode()).hexdigest()[:16]
+    cache_manager = get_cache_manager()
+    metrics = get_metrics_registry()
+    cached = await cache_manager.get_query_expansion(query_hash)
+    if cached:
+        metrics.record_cache("query_expansion", True)
+        return cached
+    metrics.record_cache("query_expansion", False)
+
     try:
         client = get_chat_openai()
         response = await client.chat.completions.create(
@@ -41,9 +54,18 @@ async def expand_query(query: str) -> list[str]:
             temperature=0.7,
         )
         raw = response.choices[0].message.content or ""
-        paraphrases = [line.strip() for line in raw.strip().splitlines() if line.strip()]
+        paraphrases = []
+        seen = {query.strip().lower()}
+        for line in raw.strip().splitlines():
+            normalized = line.strip()
+            normalized_key = normalized.lower()
+            if normalized and normalized_key not in seen:
+                paraphrases.append(normalized)
+                seen.add(normalized_key)
         # Query gốc luôn ở đầu, thêm paraphrases phía sau
-        return [query] + paraphrases[:2]
+        variants = [query] + paraphrases[:2]
+        await cache_manager.set_query_expansion(query_hash, variants)
+        return variants
 
     except Exception:
         # Nếu expand thất bại → trả về query gốc (degraded gracefully)

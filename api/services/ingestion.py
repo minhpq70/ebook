@@ -10,15 +10,46 @@ import asyncio
 import logging
 import unicodedata
 import re
+import time
 from core.supabase_client import get_supabase
+from core.redis_client import get_cache_manager
 from core.config import settings
-from .pdf_processor import process_pdf, TextChunk
+from .metrics_registry import get_metrics_registry
+from .pdf_processor import _count_tokens, chunk_pages, get_pdf_page_count, iter_pdf_page_batches, TextChunk
 from .embedding import embed_batch
 
 logger = logging.getLogger("ebook.ingestion")
 
 
 STORAGE_BUCKET = "books"
+
+
+async def _update_ingestion_progress(
+    book_id: str,
+    *,
+    status: str,
+    message: str,
+    total_pages: int | None = None,
+    processed_pages: int | None = None,
+    total_chunks: int | None = None,
+    stored_chunks: int | None = None,
+) -> None:
+    cache_manager = get_cache_manager()
+    progress = {
+        "book_id": book_id,
+        "status": status,
+        "message": message,
+        "total_pages": total_pages,
+        "processed_pages": processed_pages,
+        "total_chunks": total_chunks,
+        "stored_chunks": stored_chunks,
+    }
+    await cache_manager.set_ingestion_progress(book_id, progress)
+
+
+async def get_ingestion_progress(book_id: str) -> dict | None:
+    """Lấy trạng thái ingestion gần nhất từ cache."""
+    return await get_cache_manager().get_ingestion_progress(book_id)
 
 
 def _sanitize_filename(filename: str) -> str:
@@ -90,15 +121,58 @@ async def run_ingestion_pipeline(book_id: str, pdf_bytes: bytes) -> None:
     """
     import asyncio
     supabase = get_supabase()
+    started_at = time.perf_counter()
+    metrics = get_metrics_registry()
     try:
-        # process_pdf là CPU-bound (pypdf parsing 944 trang) → offload sang thread
-        chunks, total_pages = await asyncio.to_thread(process_pdf, pdf_bytes)
-        if not chunks:
-            raise ValueError("Không trích xuất được nội dung từ PDF")
+        total_pages = await asyncio.to_thread(get_pdf_page_count, pdf_bytes)
+        await _update_ingestion_progress(
+            book_id,
+            status="processing",
+            message="Đang phân tích PDF và trích xuất nội dung",
+            total_pages=total_pages,
+            processed_pages=0,
+            total_chunks=0,
+            stored_chunks=0,
+        )
 
-        texts = [c.content for c in chunks]
-        embeddings = await embed_batch(texts)
-        await _store_chunks(book_id, chunks, embeddings)
+        total_chunks = 0
+        stored_chunks = 0
+        next_chunk_index = 0
+
+        for page_batch in iter_pdf_page_batches(pdf_bytes, settings.pdf_page_batch_size):
+            chunks = chunk_pages(page_batch, start_chunk_index=next_chunk_index)
+            if chunks:
+                texts = [chunk.content for chunk in chunks]
+                embeddings = await embed_batch(texts, batch_size=settings.embedding_batch_size)
+                await _store_chunks(book_id, chunks, embeddings)
+                total_chunks += len(chunks)
+                stored_chunks += len(chunks)
+                next_chunk_index += len(chunks)
+
+            processed_pages = page_batch[-1]["page_number"] if page_batch else 0
+            await _update_ingestion_progress(
+                book_id,
+                status="processing",
+                message="Đang chunk, embed và lưu dữ liệu theo lô",
+                total_pages=total_pages,
+                processed_pages=processed_pages,
+                total_chunks=total_chunks,
+                stored_chunks=stored_chunks,
+            )
+
+        from .metadata_extractor import extract_toc
+        toc_text = await asyncio.to_thread(extract_toc, pdf_bytes)
+        if toc_text:
+            toc_chunk = TextChunk(
+                content=toc_text,
+                page_number=-1,
+                chunk_index=next_chunk_index,
+                token_count=_count_tokens(toc_text),
+            )
+            toc_embedding = await embed_batch([toc_chunk.content], batch_size=1)
+            await _store_chunks(book_id, [toc_chunk], toc_embedding)
+            total_chunks += 1
+            stored_chunks += 1
 
         # Trích xuất ảnh bìa (cũng CPU-bound — render page thành image)
         from .metadata_extractor import get_cover_image_bytes, generate_ai_summary
@@ -130,10 +204,30 @@ async def run_ingestion_pipeline(book_id: str, pdf_bytes: bytes) -> None:
             update_data["ai_summary"] = ai_summary
 
         supabase.table("books").update(update_data).eq("id", book_id).execute()
+        metrics.record_ingestion(
+            "ready",
+            latency_ms=(time.perf_counter() - started_at) * 1000,
+            chunks=stored_chunks,
+        )
+        await _update_ingestion_progress(
+            book_id,
+            status="ready",
+            message="Hoàn tất ingestion",
+            total_pages=total_pages,
+            processed_pages=total_pages,
+            total_chunks=total_chunks,
+            stored_chunks=stored_chunks,
+        )
 
     except Exception as e:
         logger.error("Ingestion pipeline error for book %s: %s", book_id, e, exc_info=True)
         supabase.table("books").update({"status": "error"}).eq("id", book_id).execute()
+        metrics.record_ingestion("error")
+        await _update_ingestion_progress(
+            book_id,
+            status="error",
+            message=str(e),
+        )
         raise e
 
 
@@ -161,7 +255,7 @@ async def _store_chunks(
 ) -> None:
     """Insert chunks + embeddings vào Supabase theo batches."""
     supabase = get_supabase()
-    batch_size = 50  # Supabase recommend batch nhỏ để tránh timeout
+    batch_size = settings.ingestion_store_batch_size
 
     rows = []
     for chunk, embedding in zip(chunks, embeddings):

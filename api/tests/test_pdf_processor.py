@@ -7,6 +7,7 @@ import pytest
 from services.pdf_processor import (
     _clean_text,
     _count_tokens,
+    chunk_pages,
     is_valid_vietnamese_text_optimized,
 )
 
@@ -96,3 +97,27 @@ class TestVietnameseTextValidation:
     def test_mixed_valid_vietnamese_english(self):
         text = "Kinh tế Việt Nam (GDP) tăng trưởng 6.5% trong năm 2024, theo báo cáo của World Bank."
         assert is_valid_vietnamese_text_optimized(text) is True
+
+
+class TestChunkPages:
+    def test_respects_start_chunk_index(self, monkeypatch):
+        class FakeSplitter:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def split_text(self, text):
+                return [text]
+
+        monkeypatch.setattr("services.pdf_processor.RecursiveCharacterTextSplitter", FakeSplitter)
+        pages = [{
+            "page_number": 1,
+            "text": (
+                "Đây là một đoạn văn bản tiếng Việt đủ dài để được chia thành chunk. "
+                "Nội dung này được lặp lại nhiều lần nhằm vượt qua ngưỡng tối thiểu. "
+            ) * 6,
+        }]
+
+        chunks = chunk_pages(pages, start_chunk_index=7)
+
+        assert chunks
+        assert chunks[0].chunk_index == 7

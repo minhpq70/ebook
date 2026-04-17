@@ -52,6 +52,16 @@ def _deduplicate_chunks(chunks: list[ChunkInfo], threshold: float = 0.95) -> lis
     return unique
 
 
+def _trim_candidates_for_reranking(
+    chunks: list[ChunkInfo],
+    limit: int,
+) -> list[ChunkInfo]:
+    """Giới hạn số candidates để tránh embed quá nhiều chunks khi top_k nhỏ."""
+    if len(chunks) <= limit:
+        return chunks
+    return sorted(chunks, key=lambda chunk: chunk.score or 0.0, reverse=True)[:limit]
+
+
 async def rerank_chunks(
     query: str,
     chunks: list[ChunkInfo],
@@ -79,6 +89,7 @@ async def rerank_chunks(
 
     # Dedup trước để tránh xử lý trùng
     chunks = _deduplicate_chunks(chunks)
+    chunks = _trim_candidates_for_reranking(chunks, max(top_k * 2, 1))
 
     if len(chunks) <= top_k:
         return chunks

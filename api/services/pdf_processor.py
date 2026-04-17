@@ -5,6 +5,7 @@ PDF Processor Service
 - Chunk text thành các đoạn nhỏ với overlap
 - Tối ưu cho tiếng Việt
 """
+import asyncio
 import io
 import re
 import logging
@@ -125,7 +126,6 @@ def extract_pages_from_pdf(pdf_bytes: bytes) -> list[dict]:
             # Fallback to original text if OCR fails
             return _clean_text(raw_text)
 
-    # Sequential processing for now (will be optimized in Phase 2)
     for i in range(len(doc)):
         try:
             text = asyncio.run(process_page_async(i))
@@ -141,7 +141,62 @@ def extract_pages_from_pdf(pdf_bytes: bytes) -> list[dict]:
     return pages
 
 
-def chunk_pages(pages: list[dict]) -> list[TextChunk]:
+def get_pdf_page_count(pdf_bytes: bytes) -> int:
+    """Đếm số trang mà không cần chunk toàn bộ PDF."""
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        return len(doc)
+    finally:
+        doc.close()
+
+
+def iter_pdf_page_batches(pdf_bytes: bytes, batch_size: int | None = None):
+    """
+    Yield các batch trang đã extract text để ingestion có thể xử lý streaming.
+    Mỗi batch có dạng list[{"page_number": int, "text": str}].
+    """
+    effective_batch_size = max(1, batch_size or settings.pdf_page_batch_size)
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+
+    try:
+        current_batch: list[dict] = []
+        for page_index in range(len(doc)):
+            page = doc[page_index]
+            raw_text = page.get_text() or ""
+
+            if is_valid_vietnamese_text_optimized(raw_text):
+                text = _clean_text(raw_text)
+            else:
+                rect = page.rect
+                margin = 0.05
+                crop_rect = fitz.Rect(
+                    rect.x0 + rect.width * margin,
+                    rect.y0 + rect.height * margin,
+                    rect.x1 - rect.width * margin,
+                    rect.y1 - rect.height * margin
+                )
+                try:
+                    pix = page.get_pixmap(dpi=200, clip=crop_rect)
+                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                    text = _clean_text(pytesseract.image_to_string(img, lang="vie", timeout=30))
+                except Exception as e:
+                    logger.warning("OCR failed for page %d: %s", page_index + 1, e)
+                    text = _clean_text(raw_text)
+
+            if text:
+                current_batch.append({"page_number": page_index + 1, "text": text})
+
+            if len(current_batch) >= effective_batch_size:
+                yield current_batch
+                current_batch = []
+
+        if current_batch:
+            yield current_batch
+    finally:
+        doc.close()
+
+
+def chunk_pages(pages: list[dict], start_chunk_index: int = 0) -> list[TextChunk]:
     """
     Chunk nội dung các trang thành các đoạn nhỏ.
 
@@ -165,7 +220,7 @@ def chunk_pages(pages: list[dict]) -> list[TextChunk]:
     )
 
     chunks: list[TextChunk] = []
-    chunk_index = 0
+    chunk_index = start_chunk_index
 
     for page in pages:
         page_number = page["page_number"]

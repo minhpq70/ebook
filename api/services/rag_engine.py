@@ -15,6 +15,7 @@ from core.openai_client import get_openai, get_chat_openai
 from core.supabase_client import get_supabase
 from core.config import settings
 from models.schemas import ChunkInfo, RAGQueryResponse
+from services.metrics_registry import get_metrics_registry
 
 logger = logging.getLogger("ebook.rag")
 
@@ -177,6 +178,7 @@ async def run_rag_query(
     answer = _strip_thinking(raw_answer)
     tokens_used = response.usage.total_tokens if response.usage else None
     latency_ms = int((time.time() - start_time) * 1000)
+    get_metrics_registry().record_rag_latency(latency_ms, tokens_used)
 
     # Log vào Supabase (async fire-and-forget qua thread)
     asyncio.create_task(asyncio.to_thread(
@@ -321,6 +323,7 @@ async def stream_rag_query(
             tokens_used = chunk.usage.total_tokens
 
     latency_ms = int((time.time() - start_time) * 1000)
+    get_metrics_registry().record_rag_latency(latency_ms, tokens_used)
 
     # Gửi event done
     yield f"data: {json.dumps({'type': 'done', 'data': {'tokens_used': tokens_used, 'latency_ms': latency_ms}})}\n\n"
@@ -338,4 +341,3 @@ async def stream_rag_query(
         tokens_used=tokens_used,
         latency_ms=latency_ms,
     ))
-

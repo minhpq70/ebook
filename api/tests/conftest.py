@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Set env vars trước khi import config
 os.environ.setdefault("JWT_SECRET", "test-secret-key-for-unit-tests-only-32chars!")
 os.environ.setdefault("SUPABASE_URL", "https://fake.supabase.co")
-os.environ.setdefault("SUPABASE_KEY", "fake-key")
+os.environ.setdefault("SUPABASE_SERVICE_KEY", "fake-key")
 os.environ.setdefault("OPENAI_API_KEY", "fake-key")
 
 # Mock heavy modules chưa cài locally để tránh ImportError khi collecting
@@ -20,6 +20,8 @@ os.environ.setdefault("OPENAI_API_KEY", "fake-key")
 for mod_name in [
     "fitz",
     "pytesseract",
+    "redis",
+    "redis.asyncio",
     "supabase",
     "langchain_text_splitters",
 ]:

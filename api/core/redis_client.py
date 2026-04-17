@@ -106,6 +106,35 @@ class CacheManager:
         except Exception as e:
             logger.warning(f"Error caching query result: {e}")
 
+    async def get_query_expansion(self, query_hash: str) -> list[str] | None:
+        """Get cached query expansion variants."""
+        try:
+            redis = await self.get_redis()
+            if not redis:
+                return None
+
+            cached = await redis.get(f"query:expand:{query_hash}")
+            if cached:
+                return json.loads(cached)
+        except Exception as e:
+            logger.warning(f"Error getting cached query expansion: {e}")
+        return None
+
+    async def set_query_expansion(self, query_hash: str, variants: list[str]):
+        """Cache query expansion variants with TTL."""
+        try:
+            redis = await self.get_redis()
+            if not redis:
+                return
+
+            await redis.setex(
+                f"query:expand:{query_hash}",
+                settings.query_expansion_ttl,
+                json.dumps(variants),
+            )
+        except Exception as e:
+            logger.warning(f"Error caching query expansion: {e}")
+
     async def get_book_metadata(self, book_id: str) -> dict | None:
         """Get cached book metadata"""
         try:
@@ -164,6 +193,70 @@ class CacheManager:
         except Exception as e:
             logger.warning(f"Error caching book cover: {e}")
 
+    async def get_ingestion_progress(self, book_id: str) -> dict | None:
+        """Get ingestion progress for a book."""
+        try:
+            redis = await self.get_redis()
+            if not redis:
+                return None
+
+            key = f"ingestion:progress:{book_id}"
+            cached = await redis.get(key)
+            if cached:
+                return json.loads(cached)
+        except Exception as e:
+            logger.warning(f"Error getting ingestion progress: {e}")
+        return None
+
+    async def set_ingestion_progress(self, book_id: str, progress: dict):
+        """Cache ingestion progress with TTL."""
+        try:
+            redis = await self.get_redis()
+            if not redis:
+                return
+
+            key = f"ingestion:progress:{book_id}"
+            await redis.setex(key, settings.ingestion_progress_ttl, json.dumps(progress))
+        except Exception as e:
+            logger.warning(f"Error caching ingestion progress: {e}")
+
+    async def clear_ingestion_progress(self, book_id: str):
+        """Clear ingestion progress state."""
+        try:
+            redis = await self.get_redis()
+            if not redis:
+                return
+            await redis.delete(f"ingestion:progress:{book_id}")
+        except Exception as e:
+            logger.warning(f"Error clearing ingestion progress: {e}")
+
+    async def get_metrics_snapshot(self) -> dict | None:
+        """Get persisted metrics snapshot."""
+        try:
+            redis = await self.get_redis()
+            if not redis:
+                return None
+            cached = await redis.get("metrics:snapshot")
+            if cached:
+                return json.loads(cached)
+        except Exception as e:
+            logger.warning(f"Error getting metrics snapshot: {e}")
+        return None
+
+    async def set_metrics_snapshot(self, snapshot: dict):
+        """Persist metrics snapshot with TTL."""
+        try:
+            redis = await self.get_redis()
+            if not redis:
+                return
+            await redis.setex(
+                "metrics:snapshot",
+                settings.metrics_snapshot_ttl,
+                json.dumps(snapshot),
+            )
+        except Exception as e:
+            logger.warning(f"Error setting metrics snapshot: {e}")
+
     async def invalidate_book_cache(self, book_id: str):
         """Invalidate all caches for a book"""
         try:
@@ -175,7 +268,8 @@ class CacheManager:
             patterns = [
                 f"query:{book_id}:*",
                 f"book:meta:{book_id}",
-                f"book:cover:{book_id}"
+                f"book:cover:{book_id}",
+                f"ingestion:progress:{book_id}",
             ]
 
             for pattern in patterns:

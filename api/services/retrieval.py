@@ -9,13 +9,16 @@ Flow:
 from __future__ import annotations
 
 import hashlib
+import math
+import time
 from core.supabase_client import get_supabase
 from core.redis_client import get_cache_manager
 from core.config import settings
 from models.schemas import ChunkInfo
-from .embedding import embed_text, embed_batch
+from .embedding import embed_text
 from .query_expander import expand_query, embed_expanded_queries
 from .reranker import rerank_chunks
+from .metrics_registry import get_metrics_registry
 
 
 async def retrieve_chunks(
@@ -40,6 +43,8 @@ async def retrieve_chunks(
         use_query_expansion: Có expand query không (thêm ~0.5s latency)
     """
     k = top_k or settings.rag_top_k
+    started_at = time.perf_counter()
+    metrics = get_metrics_registry()
 
     # Generate cache key
     query_hash = hashlib.md5(f"{query}:{use_query_expansion}".encode()).hexdigest()[:16]
@@ -48,11 +53,18 @@ async def retrieve_chunks(
     cache_manager = get_cache_manager()
     cached_result = await cache_manager.get_query_result(query_hash, book_id)
     if cached_result:
+        metrics.record_cache("query_result", True)
         # Convert back to ChunkInfo objects
-        return [ChunkInfo(**chunk) for chunk in cached_result]
+        cached_chunks = [ChunkInfo(**chunk) for chunk in cached_result]
+        metrics.record_retrieval(
+            latency_ms=(time.perf_counter() - started_at) * 1000,
+            candidate_count=len(cached_chunks),
+        )
+        return cached_chunks
+    metrics.record_cache("query_result", False)
 
     # Cache miss - compute result
-    n_candidates = k * 3
+    n_candidates = max(k * 4, 12)
 
     # ── Bước 1: Query Expansion ──────────────────────────────────
     if use_query_expansion:
@@ -73,6 +85,7 @@ async def retrieve_chunks(
         query_text=query,     # FTS vẫn dùng query gốc (tránh noise từ paraphrases)
         top_k=n_candidates,
     )
+    candidates = _prepare_rerank_candidates(candidates, k)
 
     # ── Bước 4: Semantic Reranking ───────────────────────────────
     reranked = await rerank_chunks(
@@ -81,10 +94,15 @@ async def retrieve_chunks(
         top_k=k,
         query_embedding=query_embedding,
     )
+    reranked = await _expand_context_neighbors(book_id, reranked, k)
 
     # Cache the result
     result_dicts = [chunk.dict() for chunk in reranked]
     await cache_manager.set_query_result(query_hash, book_id, result_dicts)
+    metrics.record_retrieval(
+        latency_ms=(time.perf_counter() - started_at) * 1000,
+        candidate_count=len(candidates),
+    )
 
     return reranked
 
@@ -119,6 +137,86 @@ async def _hybrid_search(
             score=row.get("score"),
         ))
     return chunks
+
+
+def _prepare_rerank_candidates(
+    candidates: list[ChunkInfo],
+    top_k: int,
+) -> list[ChunkInfo]:
+    """
+    Giữ tập ứng viên đủ rộng để rerank tốt nhưng không embed quá nhiều text.
+    """
+    if not candidates:
+        return []
+
+    rerank_limit = max(top_k * 3, settings.reranker_max_candidates)
+    rerank_limit = min(rerank_limit, len(candidates))
+    sorted_candidates = sorted(
+        candidates,
+        key=lambda chunk: chunk.score or 0.0,
+        reverse=True,
+    )
+    return sorted_candidates[:rerank_limit]
+
+
+async def _expand_context_neighbors(
+    book_id: str,
+    chunks: list[ChunkInfo],
+    top_k: int,
+) -> list[ChunkInfo]:
+    """
+    Prefetch vài chunk lân cận cho top hits để giảm mất ngữ cảnh tại biên chunk.
+    Chỉ thay thế các chunk yếu hơn khi còn thiếu hàng xóm liên quan.
+    """
+    if not chunks or settings.retrieval_prefetch_neighbors <= 0:
+        return chunks
+
+    primary = chunks[:top_k]
+    seen_ids = {chunk.id for chunk in primary}
+    seen_indices = {chunk.chunk_index for chunk in primary}
+    neighbor_indices: set[int] = set()
+
+    for chunk in primary[: min(3, len(primary))]:
+        for offset in range(1, settings.retrieval_prefetch_neighbors + 1):
+            neighbor_indices.add(chunk.chunk_index - offset)
+            neighbor_indices.add(chunk.chunk_index + offset)
+
+    neighbor_indices -= seen_indices
+    neighbor_indices = {idx for idx in neighbor_indices if idx >= 0}
+    if not neighbor_indices:
+        return primary
+
+    supabase = get_supabase()
+    result = (
+        supabase.table("book_chunks")
+        .select("id, chunk_index, page_number, content")
+        .eq("book_id", book_id)
+        .in_("chunk_index", sorted(neighbor_indices))
+        .execute()
+    )
+
+    neighbors = [
+        ChunkInfo(
+            id=row["id"],
+            chunk_index=row["chunk_index"],
+            page_number=row.get("page_number"),
+            content=row["content"],
+            score=primary[0].score if primary else 0.0,
+        )
+        for row in (result.data or [])
+        if row["id"] not in seen_ids
+    ]
+    if not neighbors:
+        return primary
+
+    merged = sorted(primary + neighbors, key=lambda chunk: chunk.chunk_index)
+    if len(merged) <= top_k:
+        return merged
+
+    prioritized = primary[: max(1, math.ceil(top_k / 2))]
+    prioritized_ids = {chunk.id for chunk in prioritized}
+    tail = [chunk for chunk in merged if chunk.id not in prioritized_ids]
+    return prioritized + tail[: max(0, top_k - len(prioritized))]
 
 
 async def retrieve_chunks_by_page_range(

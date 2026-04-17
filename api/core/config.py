@@ -26,6 +26,23 @@ class Settings(BaseSettings):
     rag_top_k: int = 8
     rag_vector_weight: float = 0.7
     rag_fts_weight: float = 0.3
+    pdf_page_batch_size: int = 16
+    ingestion_store_batch_size: int = 50
+    embedding_batch_size: int = 100
+    embedding_max_concurrency: int = 4
+    embedding_max_retries: int = 5
+    ingestion_progress_ttl: int = 86400
+    query_expansion_ttl: int = 21600
+    reranker_max_candidates: int = 24
+    retrieval_prefetch_neighbors: int = 1
+    gc_threshold_gen0: int = 700
+    gc_threshold_gen1: int = 10
+    gc_threshold_gen2: int = 10
+    memory_monitor_enabled: bool = True
+    memory_soft_limit_mb: int = 512
+    memory_hard_limit_mb: int = 768
+    metrics_snapshot_ttl: int = 86400
+    metrics_persist_interval_seconds: int = 60
 
     # App
     app_env: str = "development"
@@ -46,9 +63,8 @@ class Settings(BaseSettings):
     def cors_origins(self) -> list[str]:
         """Parse CORS origins từ string, validate URLs hợp lệ."""
         origins = [origin.strip() for origin in self.app_cors_origins.split(",") if origin.strip()]
-        # Validate basic URL format
         import re
-        url_pattern = re.compile(r"^https?://[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?::\d+)?/?$")
+        url_pattern = re.compile(r"^https?://(?:localhost|127\.0\.0\.1|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})(?::\d+)?/?$")
         for origin in origins:
             if not url_pattern.match(origin):
                 raise ValueError(f"CORS origin không hợp lệ: {origin}")
@@ -66,10 +82,6 @@ class Settings(BaseSettings):
         if len(self.jwt_secret) < 32:
             raise ValueError("JWT_SECRET phải có ít nhất 32 ký tự")
         return self
-
-    @property
-    def cors_origins(self) -> list[str]:
-        return [o.strip() for o in self.app_cors_origins.split(",")]
 
 
 settings = Settings()

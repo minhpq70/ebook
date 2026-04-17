@@ -127,6 +127,25 @@ async def get_book(book_id: str):
     return BookResponse(**book)
 
 
+@router.get("/{book_id}/ingestion-status", response_model=IngestionStatus)
+async def get_ingestion_status(book_id: str):
+    """Lấy tiến độ ingestion hiện tại từ cache; fallback sang trạng thái book."""
+    book = ingestion.get_book(book_id)
+    if not book:
+        raise HTTPException(status_code=404, detail="Không tìm thấy sách")
+
+    progress = await ingestion.get_ingestion_progress(book_id)
+    if progress:
+        return IngestionStatus(**progress)
+
+    return IngestionStatus(
+        book_id=book_id,
+        status=book["status"],
+        total_pages=book.get("total_pages"),
+        message="Không có tiến độ tạm thời trong cache",
+    )
+
+
 @router.delete("/{book_id}")
 async def delete_book(book_id: str, _: dict = Depends(require_admin)):
     """Xóa sách — chỉ Admin."""
@@ -164,4 +183,3 @@ async def get_pdf_url(book_id: str):
         return {"url": url, "expires_in": 3600}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi tạo signed URL: {str(e)}")
-

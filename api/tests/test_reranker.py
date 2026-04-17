@@ -6,7 +6,7 @@ Mock embedding calls.
 import pytest
 from unittest.mock import AsyncMock, patch
 from models.schemas import ChunkInfo
-from services.reranker import _cosine_similarity, _deduplicate_chunks, rerank_chunks
+from services.reranker import _cosine_similarity, _deduplicate_chunks, _trim_candidates_for_reranking, rerank_chunks
 
 
 # ── _cosine_similarity ────────────────────────────────────────────────────────
@@ -82,6 +82,19 @@ class TestDeduplicateChunks:
         ]
         result = _deduplicate_chunks(chunks)
         assert [c.chunk_index for c in result] == [0, 1, 2]
+
+
+class TestTrimCandidatesForReranking:
+    def test_keeps_highest_scored_candidates(self):
+        chunks = [
+            ChunkInfo(id="a", chunk_index=0, page_number=1, content="A", score=0.1),
+            ChunkInfo(id="b", chunk_index=1, page_number=1, content="B", score=0.9),
+            ChunkInfo(id="c", chunk_index=2, page_number=1, content="C", score=0.6),
+        ]
+
+        result = _trim_candidates_for_reranking(chunks, limit=2)
+
+        assert [chunk.id for chunk in result] == ["b", "c"]
 
 
 # ── rerank_chunks ─────────────────────────────────────────────────────────────

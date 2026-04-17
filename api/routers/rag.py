@@ -6,6 +6,7 @@ RAG Router
 import asyncio
 import json
 import logging
+import time
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from slowapi import Limiter
@@ -15,6 +16,7 @@ limiter = Limiter(key_func=get_remote_address)
 
 from models.schemas import RAGQueryRequest, RAGQueryResponse
 from services import ingestion, retrieval, rag_engine
+from services.metrics_registry import get_metrics_registry
 from services.sheets_logger import log_query as sheets_log
 from services.rag_engine import is_toc_query
 
@@ -73,6 +75,7 @@ async def _get_validated_chunks(req: RAGQueryRequest):
 @limiter.limit("10/minute")
 async def query_book(req: RAGQueryRequest):
     """RAG query — blocking, trả về full response."""
+    started_at = time.perf_counter()
     chunks = await _get_validated_chunks(req)
     try:
         result = await rag_engine.run_rag_query(
@@ -87,6 +90,11 @@ async def query_book(req: RAGQueryRequest):
             req.book_id, req.task_type,
             result.tokens_used, cost,
             req.query,
+        )
+        get_metrics_registry().record_query(
+            task_type=req.task_type,
+            latency_ms=(time.perf_counter() - started_at) * 1000,
+            source_count=len(chunks),
         )
         # Ghi vào Google Sheets (bất đồng bộ, không block response)
         await sheets_log(
@@ -106,6 +114,7 @@ async def query_book_stream(req: RAGQueryRequest):
     RAG query — SSE streaming.
     Text của AI xuất hiện dần (giống ChatGPT).
     """
+    started_at = time.perf_counter()
     try:
         chunks = await _get_validated_chunks(req)
     except Exception as e:
@@ -138,6 +147,11 @@ async def query_book_stream(req: RAGQueryRequest):
         finally:
             # Khi stream xong, ghi log chính thức
             cost = _calc_cost(tokens_used) if tokens_used else 0.0
+            get_metrics_registry().record_query(
+                task_type=req.task_type,
+                latency_ms=(time.perf_counter() - started_at) * 1000,
+                source_count=len(chunks),
+            )
             query_logger.info(
                 "STREAM\tbook=%s\ttype=%s\ttokens=%s\tcost=%s\tq=%s",
                 req.book_id, req.task_type, tokens_used, cost, req.query,
