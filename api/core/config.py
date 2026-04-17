@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     
     # Google Service Account (cho logging)
     google_sa_json: str = ""            # JSON string hoặc base64 encoded
+    
+    # Redis (cho caching)
+    redis_url: str = "redis://localhost:6379"  # Default Redis URL
 
     @property
     def cors_origins(self) -> list[str]:

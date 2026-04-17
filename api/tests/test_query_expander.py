@@ -9,11 +9,11 @@ from services.query_expander import expand_query, embed_expanded_queries
 
 class TestExpandQuery:
     @pytest.mark.asyncio
-    @patch("services.query_expander.get_openai")
-    async def test_returns_original_plus_paraphrases(self, mock_get_openai):
+    @patch("services.query_expander.get_chat_openai")
+    async def test_returns_original_plus_paraphrases(self, mock_get_chat_openai):
         """expand_query trả về [query_gốc, paraphrase1, paraphrase2]."""
         mock_client = AsyncMock()
-        mock_get_openai.return_value = mock_client
+        mock_get_chat_openai.return_value = mock_client
 
         # Mock response
         mock_choice = MagicMock()
@@ -30,11 +30,11 @@ class TestExpandQuery:
         assert result[2] == "Phiên bản 2 câu hỏi"
 
     @pytest.mark.asyncio
-    @patch("services.query_expander.get_openai")
-    async def test_graceful_fallback_on_error(self, mock_get_openai):
+    @patch("services.query_expander.get_chat_openai")
+    async def test_graceful_fallback_on_error(self, mock_get_chat_openai):
         """Nếu OpenAI lỗi → trả về [query_gốc] thay vì crash."""
         mock_client = AsyncMock()
-        mock_get_openai.return_value = mock_client
+        mock_get_chat_openai.return_value = mock_client
         mock_client.chat.completions.create.side_effect = Exception("API Error")
 
         result = await expand_query("Test query")
@@ -42,11 +42,11 @@ class TestExpandQuery:
         assert result == ["Test query"]
 
     @pytest.mark.asyncio
-    @patch("services.query_expander.get_openai")
-    async def test_empty_response(self, mock_get_openai):
+    @patch("services.query_expander.get_chat_openai")
+    async def test_empty_response(self, mock_get_chat_openai):
         """OpenAI trả về empty string → vẫn có query gốc."""
         mock_client = AsyncMock()
-        mock_get_openai.return_value = mock_client
+        mock_get_chat_openai.return_value = mock_client
 
         mock_choice = MagicMock()
         mock_choice.message.content = ""
@@ -59,11 +59,11 @@ class TestExpandQuery:
         assert result == ["Test"]
 
     @pytest.mark.asyncio
-    @patch("services.query_expander.get_openai")
-    async def test_limits_to_2_paraphrases(self, mock_get_openai):
+    @patch("services.query_expander.get_chat_openai")
+    async def test_limits_to_2_paraphrases(self, mock_get_chat_openai):
         """Chỉ lấy tối đa 2 paraphrases dù GPT trả nhiều hơn."""
         mock_client = AsyncMock()
-        mock_get_openai.return_value = mock_client
+        mock_get_chat_openai.return_value = mock_client
 
         mock_choice = MagicMock()
         mock_choice.message.content = "P1\nP2\nP3\nP4"

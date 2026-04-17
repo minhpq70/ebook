@@ -7,7 +7,7 @@ import pytest
 from services.pdf_processor import (
     _clean_text,
     _count_tokens,
-    is_valid_vietnamese_text,
+    is_valid_vietnamese_text_optimized,
 )
 
 
@@ -69,30 +69,30 @@ class TestCountTokens:
         assert long > short
 
 
-# ── is_valid_vietnamese_text ──────────────────────────────────────────────────
+# ── is_valid_vietnamese_text_optimized ──────────────────────────────────────────────────
 
 class TestVietnameseTextValidation:
     def test_valid_vietnamese(self):
         text = "Đây là một đoạn văn bản tiếng Việt có dấu đầy đủ, bao gồm các ký tự đặc biệt như ă, ô, ơ, ư."
-        assert is_valid_vietnamese_text(text) is True
+        assert is_valid_vietnamese_text_optimized(text) is True
 
     def test_broken_encoding(self):
         """Text bị lỗi font VNI/TCVN3 chứa nhiều ký tự lạ."""
         text = "§µ¶·¹¨»¾¼½Æ©ÇÊÈÉË®ÌÐÎÏÑªÒÕÓÔÖ×ÝØÜÞßãä«åæç¬ñõøö÷ùúûüþ" * 3
-        assert is_valid_vietnamese_text(text) is False
+        assert is_valid_vietnamese_text_optimized(text) is False
 
-    def test_short_text_passes(self):
-        """Text quá ngắn → mặc định cho qua."""
-        assert is_valid_vietnamese_text("short") is True
+    def test_short_text_fails(self):
+        """Text quá ngắn → fail."""
+        assert is_valid_vietnamese_text_optimized("short") is False
 
-    def test_empty_passes(self):
-        assert is_valid_vietnamese_text("") is True
+    def test_empty_fails(self):
+        assert is_valid_vietnamese_text_optimized("") is False
 
-    def test_english_text_passes(self):
-        """English text không có ký tự lạ → pass."""
+    def test_english_text_fails(self):
+        """English text không có ký tự tiếng Việt → fail."""
         text = "This is a normal English text without any suspicious characters at all for testing purposes here."
-        assert is_valid_vietnamese_text(text) is True
+        assert is_valid_vietnamese_text_optimized(text) is False
 
     def test_mixed_valid_vietnamese_english(self):
         text = "Kinh tế Việt Nam (GDP) tăng trưởng 6.5% trong năm 2024, theo báo cáo của World Bank."
-        assert is_valid_vietnamese_text(text) is True
+        assert is_valid_vietnamese_text_optimized(text) is True

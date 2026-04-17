@@ -49,39 +49,38 @@ def _clean_text(text: str) -> str:
     return text.strip()
 
 
-def is_valid_vietnamese_text(text: str) -> bool:
+def is_valid_vietnamese_text_optimized(text: str) -> bool:
     """
-    Kiểm tra xem văn bản trích xuất có bị lỗi font/encoding hay không
-    (dành riêng cho tiếng Việt). Trả về True nếu là text hợp lệ.
+    Optimized check for valid Vietnamese text.
+    Returns True if text contains valid Vietnamese characters and structure.
+    More strict validation for OCR quality assessment.
     """
-    if not text or len(text.strip()) < 50:
-        # Quá ngắn để kết luận, mặc định cho qua để tránh OCR lãng phí
-        return True
-        
-    # Pattern gom các chữ cái có dấu tiếng Việt
-    vie_pattern = re.compile(r'[àáảãạăằắẳẵặâầấẩẫậđèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵ]')
-    # Pattern các ký tự rác phổ biến khi lỗi ToUnicode (VNI, TCVN3 nguyên thủy, VISCII...)
-    suspicious_pattern = re.compile(r'[µ¸¶·¹¨»¾¼½Æ©ÇÊÈÉË®ÌÐÎÏÑªÒÕÓÔÖ×ÝØÜÞßãä«åæç¬ñõøö÷ùúûüþ¡¢§£¤¥¦]')
-    
-    # Tính số lượng
-    vie_count = len(vie_pattern.findall(text.lower()))
-    sus_count = len(suspicious_pattern.findall(text))
+    if not text or len(text.strip()) < 20:  # Require minimum length
+        return False
+
+    # Check for Vietnamese characters (đ, ă, â, ê, ô, ư, ơ)
+    vietnamese_chars = re.findall(r'[đăâêôươĐĂÂÊÔƯƠ]', text)
+    if len(vietnamese_chars) < 3:  # Require more Vietnamese chars
+        return False
+
+    # Check for reasonable word structure (Vietnamese words are typically 2-8 chars)
+    words = [w for w in text.split() if len(w) > 1]  # Filter out single chars
+    if len(words) < 5:  # Require minimum word count
+        return False
+
+    # Check average word length (Vietnamese words are typically 2-8 chars)
+    avg_word_len = sum(len(word) for word in words) / len(words)
+    if avg_word_len < 2 or avg_word_len > 12:  # Stricter bounds
+        return False
+
+    # Check for excessive non-alphabetic characters (indicates OCR garbage)
+    # Allow common punctuation: spaces, punctuation marks
+    alphabetic_chars = sum(c.isalpha() or c in 'đăâêôươĐĂÂÊÔƯƠ' for c in text)
     total_chars = len(text)
-    
-    if total_chars == 0:
-        return True
-        
-    vie_ratio = vie_count / total_chars
-    sus_ratio = sus_count / total_chars
-    
-    # 1. Rất nhiều ký tự lạ -> Chắc chắn hỏng
-    if sus_ratio > 0.02:
+    alpha_ratio = alphabetic_chars / total_chars
+    if alpha_ratio < 0.6:  # More lenient: require 60% alphabetic content
         return False
-        
-    # 2. Không có tý tiếng Việt nào nhưng lại dính ký tự lạ -> Hỏng
-    if vie_ratio < 0.005 and sus_ratio > 0.005:
-        return False
-        
+
     return True
 
 
@@ -93,32 +92,51 @@ def extract_pages_from_pdf(pdf_bytes: bytes) -> list[dict]:
     """
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     pages = []
-    
-    for i in range(len(doc)):
-        page = doc[i]
+
+    async def process_page_async(page_num: int):
+        """Process single page with optimized OCR"""
+        page = doc[page_num]
         # Thử trích xuất text thông thường
         raw_text = page.get_text() or ""
-        
-        # Đánh giá encoding
-        if not is_valid_vietnamese_text(raw_text):
-            logger.info("Trang %d phát hiện lỗi font/encoding. Fallback to OCR...", i+1)
-            try:
-                # Render trang thành ảnh với độ phân giải đủ đọc
-                pix = page.get_pixmap(dpi=300)
-                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                # Chạy OCR
-                raw_text = pytesseract.image_to_string(img, lang="vie")
-            except Exception as e:
-                logger.warning("Lỗi OCR trang %d: %s", i+1, e)
-                # Nếu OCR lỗi, vẫn giữ lại raw_text lỗi thay vì bỏ trống hoàn toàn
 
-        text = _clean_text(raw_text)
-        if text:
-            pages.append({
-                "page_number": i + 1,
-                "text": text
-            })
-            
+        # Đánh giá encoding với optimized logic
+        if is_valid_vietnamese_text_optimized(raw_text):
+            return _clean_text(raw_text)
+
+        # OCR với resolution thấp hơn (200 DPI) + crop margins để tăng tốc
+        # Crop 5% margins để loại bỏ phần không cần thiết
+        rect = page.rect
+        margin = 0.05
+        crop_rect = fitz.Rect(
+            rect.x0 + rect.width * margin,
+            rect.y0 + rect.height * margin,
+            rect.x1 - rect.width * margin,
+            rect.y1 - rect.height * margin
+        )
+
+        try:
+            pix = page.get_pixmap(dpi=200, clip=crop_rect)
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            # OCR với timeout 30 giây
+            ocr_text = pytesseract.image_to_string(img, lang="vie", timeout=30)
+            return _clean_text(ocr_text)
+        except Exception as e:
+            logger.warning("OCR failed for page %d: %s", page_num + 1, e)
+            # Fallback to original text if OCR fails
+            return _clean_text(raw_text)
+
+    # Sequential processing for now (will be optimized in Phase 2)
+    for i in range(len(doc)):
+        try:
+            text = asyncio.run(process_page_async(i))
+            if text:
+                pages.append({
+                    "page_number": i + 1,
+                    "text": text
+                })
+        except Exception as e:
+            logger.error("Error processing page %d: %s", i + 1, e)
+
     doc.close()
     return pages
 

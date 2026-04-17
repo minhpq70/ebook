@@ -1,5 +1,5 @@
 """
-Retrieval Service — Hybrid Search với Query Expansion + Reranking
+Retrieval Service — Hybrid Search với Query Expansion + Reranking + Caching
 Flow:
   1. Query expansion: sinh 2-3 paraphrases tiếng Việt
   2. Tính centroid embedding từ tất cả query variants
@@ -8,7 +8,9 @@ Flow:
 """
 from __future__ import annotations
 
+import hashlib
 from core.supabase_client import get_supabase
+from core.redis_client import get_cache_manager
 from core.config import settings
 from models.schemas import ChunkInfo
 from .embedding import embed_text, embed_batch
@@ -23,11 +25,13 @@ async def retrieve_chunks(
     use_query_expansion: bool = True,
 ) -> list[ChunkInfo]:
     """
-    Improved retrieval pipeline:
-    1. Query Expansion → tăng recall
-    2. Centroid Embedding → embedding đại diện tốt hơn
-    3. Hybrid Search với n_candidates lớn hơn → nhiều lựa chọn hơn
-    4. Semantic Reranking → chọn đúng chunks nhất
+    Improved retrieval pipeline với caching:
+    1. Check cache first
+    2. Query Expansion → tăng recall
+    3. Centroid Embedding → embedding đại diện tốt hơn
+    4. Hybrid Search với n_candidates lớn hơn → nhiều lựa chọn hơn
+    5. Semantic Reranking → chọn đúng chunks nhất
+    6. Cache result
 
     Args:
         book_id: UUID của sách
@@ -36,7 +40,18 @@ async def retrieve_chunks(
         use_query_expansion: Có expand query không (thêm ~0.5s latency)
     """
     k = top_k or settings.rag_top_k
-    # Fetch nhiều candidates hơn để reranker có đủ dữ liệu
+
+    # Generate cache key
+    query_hash = hashlib.md5(f"{query}:{use_query_expansion}".encode()).hexdigest()[:16]
+
+    # Try cache first
+    cache_manager = get_cache_manager()
+    cached_result = await cache_manager.get_query_result(query_hash, book_id)
+    if cached_result:
+        # Convert back to ChunkInfo objects
+        return [ChunkInfo(**chunk) for chunk in cached_result]
+
+    # Cache miss - compute result
     n_candidates = k * 3
 
     # ── Bước 1: Query Expansion ──────────────────────────────────
@@ -66,6 +81,10 @@ async def retrieve_chunks(
         top_k=k,
         query_embedding=query_embedding,
     )
+
+    # Cache the result
+    result_dicts = [chunk.dict() for chunk in reranked]
+    await cache_manager.set_query_result(query_hash, book_id, result_dicts)
 
     return reranked
 

@@ -113,8 +113,7 @@ urllib3==2.6.3
 uvicorn==0.30.1
 uvloop==0.22.1
 watchfiles==1.1.1
-websockets==12.0
-
+websockets==12.0redis==5.0.1
 # Testing
 pytest>=8.0
 pytest-asyncio>=0.23
