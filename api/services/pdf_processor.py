@@ -85,6 +85,13 @@ def is_valid_vietnamese_text_optimized(text: str) -> bool:
     return True
 
 
+def is_valid_vietnamese_text(text: str) -> bool:
+    """
+    Backward-compatible alias cho code cũ còn import tên hàm trước đây.
+    """
+    return is_valid_vietnamese_text_optimized(text)
+
+
 def extract_pages_from_pdf(pdf_bytes: bytes) -> list[dict]:
     """
     Trích xuất text từng trang của PDF bằng PyMuPDF (fitz).
