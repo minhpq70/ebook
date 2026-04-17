@@ -7,7 +7,7 @@ import asyncio
 import json
 import logging
 import time
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -73,7 +73,7 @@ async def _get_validated_chunks(req: RAGQueryRequest):
 
 @router.post("/query", response_model=RAGQueryResponse)
 @limiter.limit("10/minute")
-async def query_book(req: RAGQueryRequest):
+async def query_book(request: Request, req: RAGQueryRequest):
     """RAG query — blocking, trả về full response."""
     started_at = time.perf_counter()
     chunks = await _get_validated_chunks(req)
@@ -109,7 +109,7 @@ async def query_book(req: RAGQueryRequest):
 
 @router.post("/query/stream")
 @limiter.limit("10/minute")
-async def query_book_stream(req: RAGQueryRequest):
+async def query_book_stream(request: Request, req: RAGQueryRequest):
     """
     RAG query — SSE streaming.
     Text của AI xuất hiện dần (giống ChatGPT).
