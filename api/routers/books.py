@@ -6,11 +6,13 @@ Books Router
 - DELETE /books/{id} — Xóa sách
 """
 import uuid
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Depends
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from fastapi.responses import JSONResponse
 
+from core.config import settings
 from models.schemas import BookResponse, BookListResponse, IngestionStatus, BookUploadRequest
 from services import ingestion
+from services.ingestion_queue import enqueue_ingestion_job
 from services.metadata_extractor import extract_metadata_from_pdf
 from core.auth import require_admin
 
@@ -19,7 +21,6 @@ router = APIRouter(prefix="/books", tags=["Books"])
 
 @router.post("/upload", response_model=IngestionStatus)
 async def upload_book(
-    background_tasks: BackgroundTasks,
     upload_data: BookUploadRequest = Depends(),
     file: UploadFile = File(..., description="File PDF của sách"),
     _: dict = Depends(require_admin),
@@ -37,10 +38,13 @@ async def upload_book(
     if file.content_type not in allowed_mime_types:
         raise HTTPException(status_code=400, detail="File phải là PDF hợp lệ")
     
-    # Kiểm tra kích thước (50MB max)
-    max_size = 50 * 1024 * 1024
+    # Kiểm tra kích thước theo cấu hình để hỗ trợ file lớn hơn.
+    max_size = settings.max_upload_size_mb * 1024 * 1024
     if file.size and file.size > max_size:
-        raise HTTPException(status_code=400, detail="File quá lớn (tối đa 50MB)")
+        raise HTTPException(
+            status_code=400,
+            detail=f"File quá lớn (tối đa {settings.max_upload_size_mb}MB)",
+        )
     
     # Đọc và validate nội dung PDF
     pdf_bytes = await file.read()
@@ -93,17 +97,13 @@ async def upload_book(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi upload: {str(e)}")
 
-    # Ingestion pipeline chạy nền — không chặn response
-    background_tasks.add_task(
-        ingestion.run_ingestion_pipeline,
-        book_id=book_id,
-        pdf_bytes=pdf_bytes,
-    )
+    await ingestion.mark_book_queued(book_id, "Đã đưa vào hàng đợi ingestion")
+    await enqueue_ingestion_job(book_id=book_id, job_type="ingest")
 
     return IngestionStatus(
         book_id=book_id,
-        status="processing",
-        message=f"Đang xử lý sách '{title}'... Tự động cập nhật khi hoàn tất.",
+        status="queued",
+        message=f"Sách '{title}' đã vào hàng đợi ingestion. Worker sẽ tự động xử lý.",
     )
 
 

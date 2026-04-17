@@ -4,13 +4,46 @@ Redis Client for Caching Infrastructure
 - Cache management for embeddings, queries, metadata
 - TTL management and invalidation
 """
+import base64
 import json
 import logging
+import zlib
+from array import array
 from functools import lru_cache
 from redis.asyncio import Redis
 from core.config import settings
 
 logger = logging.getLogger("ebook.redis")
+
+
+def _encode_embedding_payload(embedding: list[float]) -> str:
+    """Compress embedding payload for Redis storage."""
+    if not settings.embedding_cache_compression_enabled:
+        rounded = [round(float(value), settings.embedding_cache_precision) for value in embedding]
+        return json.dumps({"encoding": "json", "values": rounded})
+
+    arr = array("f", (round(float(value), settings.embedding_cache_precision) for value in embedding))
+    compressed = zlib.compress(arr.tobytes(), level=6)
+    return json.dumps({
+        "encoding": "zlib-f32",
+        "values": base64.b64encode(compressed).decode("ascii"),
+    })
+
+
+def _decode_embedding_payload(payload: str) -> list[float]:
+    """Decode embedding payload from Redis."""
+    parsed = json.loads(payload)
+    encoding = parsed.get("encoding")
+    if encoding == "json":
+        return [float(value) for value in parsed.get("values", [])]
+    if encoding == "zlib-f32":
+        raw = zlib.decompress(base64.b64decode(parsed["values"]))
+        arr = array("f")
+        arr.frombytes(raw)
+        return [float(value) for value in arr]
+    if isinstance(parsed, list):
+        return [float(value) for value in parsed]
+    return []
 
 
 class CacheManager:
@@ -59,7 +92,7 @@ class CacheManager:
             cached = await redis.get(key)
             if cached:
                 logger.debug(f"Cache hit for embedding: {key}")
-                return json.loads(cached)
+                return _decode_embedding_payload(cached)
         except Exception as e:
             logger.warning(f"Error getting cached embedding: {e}")
         return None
@@ -72,7 +105,7 @@ class CacheManager:
                 return
 
             key = f"embed:{hash(text) % 10000}"
-            await redis.setex(key, self.embedding_ttl, json.dumps(embedding))
+            await redis.setex(key, self.embedding_ttl, _encode_embedding_payload(embedding))
             logger.debug(f"Cached embedding: {key}")
         except Exception as e:
             logger.warning(f"Error caching embedding: {e}")

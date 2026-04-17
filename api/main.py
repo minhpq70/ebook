@@ -19,8 +19,9 @@ from slowapi.middleware import SlowAPIMiddleware
 from core.config import settings
 from core.redis_client import get_cache_manager
 from routers import books, rag, auth, admin, categories, metrics
+from services.ingestion_worker import run_worker_forever
 from services.metrics_registry import get_metrics_registry
-from services.monitoring import get_runtime_snapshot, is_memory_guard_tripped, start_runtime_monitoring
+from services.monitoring import get_memory_guard_decision, get_runtime_snapshot, start_runtime_monitoring
 
 # ── Logging setup ────────────────────────────────────────────────────────────
 # LƯU Ý TRIỂN KHAI:
@@ -93,6 +94,18 @@ async def _persist_metrics_periodically() -> None:
         await cache_manager.set_metrics_snapshot(registry.snapshot())
 
 
+async def _start_ingestion_workers() -> list[asyncio.Task]:
+    """Start worker tasks trong process hiện tại nếu được bật."""
+    if not settings.ingestion_worker_enabled:
+        return []
+
+    worker_count = max(1, settings.ingestion_worker_concurrency)
+    return [
+        asyncio.create_task(run_worker_forever(f"worker-{index + 1}"))
+        for index in range(worker_count)
+    ]
+
+
 @app.on_event("startup")
 async def configure_runtime() -> None:
     """Áp dụng tuning nhẹ cho GC để giảm peak memory khi ingest."""
@@ -106,6 +119,7 @@ async def configure_runtime() -> None:
     if persisted_snapshot:
         get_metrics_registry().restore(persisted_snapshot)
     app.state.metrics_persist_task = asyncio.create_task(_persist_metrics_periodically())
+    app.state.ingestion_worker_tasks = await _start_ingestion_workers()
 
 
 @app.on_event("shutdown")
@@ -118,6 +132,13 @@ async def persist_runtime_metrics_on_shutdown() -> None:
             await task
         except asyncio.CancelledError:
             pass
+    for worker_task in getattr(app.state, "ingestion_worker_tasks", []):
+        worker_task.cancel()
+    for worker_task in getattr(app.state, "ingestion_worker_tasks", []):
+        try:
+            await worker_task
+        except asyncio.CancelledError:
+            pass
     await get_cache_manager().set_metrics_snapshot(get_metrics_registry().snapshot())
 
 
@@ -128,11 +149,16 @@ async def memory_guard_middleware(request: Request, call_next):
     Không chặn health/metrics để vẫn quan sát được trạng thái hệ thống.
     """
     exempt_paths = {"/health", "/api/v1/metrics/runtime"}
-    if request.url.path not in exempt_paths and is_memory_guard_tripped():
+    if request.url.path not in exempt_paths:
+        decision = get_memory_guard_decision(request.url.path)
+    else:
+        decision = {"block": False}
+    if decision.get("block"):
         return JSONResponse(
             status_code=503,
             content={
                 "detail": "Máy chủ đang quá tải bộ nhớ, vui lòng thử lại sau",
+                "guard": decision,
                 "runtime": get_runtime_snapshot(),
             },
         )

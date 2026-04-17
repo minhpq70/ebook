@@ -11,6 +11,12 @@ import tracemalloc
 
 from core.config import settings
 
+MEMORY_HEAVY_PATH_PREFIXES = (
+    "/api/v1/books/upload",
+    "/api/v1/rag/query",
+    "/api/v1/admin/books/",
+)
+
 
 def start_runtime_monitoring() -> None:
     """Bật tracemalloc một lần ở startup để theo dõi memory hiện tại/đỉnh."""
@@ -46,12 +52,52 @@ def get_runtime_snapshot() -> dict:
     }
 
 
+def _current_python_heap_mb() -> float:
+    if not tracemalloc.is_tracing():
+        return 0.0
+    current_bytes, _ = tracemalloc.get_traced_memory()
+    return current_bytes / (1024 * 1024)
+
+
+def get_memory_guard_decision(path: str) -> dict:
+    """
+    Quyết định guard theo 2 mức:
+    - hard: chặn gần như mọi request
+    - soft: chỉ chặn các endpoint nặng về memory/CPU
+    """
+    if not settings.memory_monitor_enabled:
+        return {"block": False, "reason": None, "level": "disabled"}
+
+    current_mb = _current_python_heap_mb()
+    if settings.memory_hard_limit_mb > 0 and current_mb >= settings.memory_hard_limit_mb:
+        return {
+            "block": True,
+            "reason": "hard_limit",
+            "level": "hard",
+            "current_mb": round(current_mb, 2),
+        }
+
+    is_heavy_path = any(path.startswith(prefix) for prefix in MEMORY_HEAVY_PATH_PREFIXES)
+    if (
+        is_heavy_path
+        and settings.memory_soft_limit_mb > 0
+        and current_mb >= settings.memory_soft_limit_mb
+    ):
+        return {
+            "block": True,
+            "reason": "soft_limit_heavy_endpoint",
+            "level": "soft",
+            "current_mb": round(current_mb, 2),
+        }
+
+    return {"block": False, "reason": None, "level": "ok", "current_mb": round(current_mb, 2)}
+
+
 def is_memory_guard_tripped() -> bool:
     """Trả về True nếu heap Python vượt hard limit cấu hình."""
     if not settings.memory_monitor_enabled:
         return False
     if settings.memory_hard_limit_mb <= 0 or not tracemalloc.is_tracing():
         return False
-    current_bytes, _ = tracemalloc.get_traced_memory()
-    current_mb = current_bytes / (1024 * 1024)
+    current_mb = _current_python_heap_mb()
     return current_mb >= settings.memory_hard_limit_mb

@@ -6,7 +6,7 @@ Admin Router
 - PATCH /admin/books/{id}   — Chỉnh metadata sách
 """
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
 from core.auth import require_admin
@@ -14,6 +14,7 @@ from core.supabase_client import get_supabase
 from services.ai_config_service import (
     AI_PROVIDERS, get_ai_config, update_ai_config
 )
+from services.ingestion_queue import enqueue_ingestion_job
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -104,7 +105,6 @@ def update_book_meta(
 @router.post("/books/{book_id}/reingest")
 async def reingest_book(
     book_id: str,
-    background_tasks: BackgroundTasks,
     _: dict = Depends(require_admin),
 ):
     """
@@ -117,40 +117,7 @@ async def reingest_book(
     if not book:
         raise HTTPException(status_code=404, detail="Không tìm thấy sách")
 
-    # Đánh dấu đang xử lý
-    supabase.table("books").update({"status": "processing"}).eq("id", book_id).execute()
+    await ingestion.mark_book_queued(book_id, "Đã đưa vào hàng đợi re-ingest")
+    await enqueue_ingestion_job(book_id=book_id, job_type="reingest")
 
-    async def _do_reingest():
-        import logging
-        import traceback
-        logger = logging.getLogger("ebook.reingest")
-        try:
-            # Lấy danh sách ID các chunks cũ
-            r = supabase.table("book_chunks").select("id").eq("book_id", book_id).execute()
-            chunk_ids = [row["id"] for row in r.data] if r.data else []
-            
-            # Xóa từng batch để tránh timeout
-            batch_size = 50
-            for i in range(0, len(chunk_ids), batch_size):
-                batch = chunk_ids[i:i+batch_size]
-                supabase.table("book_chunks").delete().in_("id", batch).execute()
-                logger.info("Đã xóa chunks %d - %d / %d", i+1, i+len(batch), len(chunk_ids))
-            
-            logger.info("Đã xóa hoàn toàn chunks cũ cho sách %s", book_id)
-
-            # Download PDF
-            file_path = book.get("file_path")
-            pdf_bytes = supabase.storage.from_("books").download(file_path)
-            logger.info("Downloaded PDF: %d bytes", len(pdf_bytes))
-
-            # Chạy lại pipeline ingestion
-            await ingestion.run_ingestion_pipeline(book_id, pdf_bytes)
-            logger.info("Hoàn thành re-ingest cho sách %s", book_id)
-        except Exception as e:
-            logger.error("Lỗi reingest sách %s: %s", book_id, e)
-            logger.debug(traceback.format_exc())
-            supabase.table("books").update({"status": "error"}).eq("id", book_id).execute()
-
-    background_tasks.add_task(_do_reingest)
-
-    return {"message": f"Đang re-ingest sách '{book['title']}'. Quá trình này mất vài phút.", "book_id": book_id}
+    return {"message": f"Sách '{book['title']}' đã vào hàng đợi re-ingest.", "book_id": book_id}

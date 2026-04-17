@@ -52,6 +52,17 @@ async def get_ingestion_progress(book_id: str) -> dict | None:
     return await get_cache_manager().get_ingestion_progress(book_id)
 
 
+async def mark_book_queued(book_id: str, message: str = "Đang chờ worker xử lý") -> None:
+    """Đánh dấu sách đang chờ trong queue thay vì đang xử lý trực tiếp."""
+    supabase = get_supabase()
+    supabase.table("books").update({"status": "queued"}).eq("id", book_id).execute()
+    await _update_ingestion_progress(
+        book_id,
+        status="queued",
+        message=message,
+    )
+
+
 def _sanitize_filename(filename: str) -> str:
     """
     Chuyển filename về dạng ASCII an toàn cho Supabase Storage.
@@ -124,6 +135,7 @@ async def run_ingestion_pipeline(book_id: str, pdf_bytes: bytes) -> None:
     started_at = time.perf_counter()
     metrics = get_metrics_registry()
     try:
+        supabase.table("books").update({"status": "processing"}).eq("id", book_id).execute()
         total_pages = await asyncio.to_thread(get_pdf_page_count, pdf_bytes)
         await _update_ingestion_progress(
             book_id,
@@ -229,6 +241,47 @@ async def run_ingestion_pipeline(book_id: str, pdf_bytes: bytes) -> None:
             message=str(e),
         )
         raise e
+
+
+async def load_pdf_bytes_for_book(book_id: str) -> bytes:
+    """Download PDF bytes từ storage dựa trên book record."""
+    supabase = get_supabase()
+    book = get_book(book_id)
+    if not book:
+        raise ValueError(f"Không tìm thấy sách {book_id}")
+
+    file_path = book.get("file_path")
+    if not file_path:
+        raise ValueError(f"Sách {book_id} không có file_path")
+
+    pdf_bytes = supabase.storage.from_(STORAGE_BUCKET).download(file_path)
+    if not pdf_bytes:
+        raise ValueError(f"Không tải được PDF cho sách {book_id}")
+    return pdf_bytes
+
+
+async def clear_book_chunks(book_id: str) -> int:
+    """Xóa chunks cũ của sách trước khi reingest."""
+    supabase = get_supabase()
+    result = supabase.table("book_chunks").select("id").eq("book_id", book_id).execute()
+    chunk_ids = [row["id"] for row in (result.data or [])]
+    batch_size = settings.ingestion_store_batch_size
+
+    for i in range(0, len(chunk_ids), batch_size):
+        batch = chunk_ids[i:i + batch_size]
+        supabase.table("book_chunks").delete().in_("id", batch).execute()
+        await asyncio.sleep(0.01)
+
+    return len(chunk_ids)
+
+
+async def process_ingestion_job(book_id: str, job_type: str = "ingest") -> None:
+    """Worker entrypoint cho ingest/reingest."""
+    if job_type == "reingest":
+        await clear_book_chunks(book_id)
+
+    pdf_bytes = await load_pdf_bytes_for_book(book_id)
+    await run_ingestion_pipeline(book_id, pdf_bytes)
 
 
 # Giữ lại hàm cũ để backward compatibility

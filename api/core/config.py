@@ -31,7 +31,13 @@ class Settings(BaseSettings):
     embedding_batch_size: int = 100
     embedding_max_concurrency: int = 4
     embedding_max_retries: int = 5
+    embedding_cache_compression_enabled: bool = True
+    embedding_cache_precision: int = 6
     ingestion_progress_ttl: int = 86400
+    ingestion_queue_name: str = "queue:ingestion_jobs"
+    ingestion_worker_enabled: bool = True
+    ingestion_worker_concurrency: int = 1
+    ingestion_worker_poll_timeout: int = 5
     query_expansion_ttl: int = 21600
     reranker_max_candidates: int = 24
     retrieval_prefetch_neighbors: int = 1
@@ -47,6 +53,7 @@ class Settings(BaseSettings):
     # App
     app_env: str = "development"
     app_cors_origins: str = "http://localhost:3000"
+    max_upload_size_mb: int = 150
 
     # Auth — đặt giá trị ngẫu nhiên mạnh trong .env, KHÔNG commit lên GitHub
     jwt_secret: str = ""
