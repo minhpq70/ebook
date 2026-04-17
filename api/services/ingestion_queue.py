@@ -9,6 +9,8 @@ import json
 import logging
 import uuid
 
+from redis.exceptions import TimeoutError as RedisTimeoutError
+
 from core.config import settings
 from core.redis_client import get_cache_manager
 
@@ -40,7 +42,14 @@ async def dequeue_ingestion_job() -> dict | None:
     if not redis:
         return None
 
-    item = await redis.brpop(settings.ingestion_queue_name, timeout=settings.ingestion_worker_poll_timeout)
+    try:
+        item = await redis.brpop(
+            settings.ingestion_queue_name,
+            timeout=settings.ingestion_worker_poll_timeout,
+        )
+    except RedisTimeoutError:
+        # No job arrived within the blocking window. This is normal for idle workers.
+        return None
     if not item:
         return None
 

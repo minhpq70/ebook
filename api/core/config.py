@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     memory_hard_limit_mb: int = 768
     metrics_snapshot_ttl: int = 86400
     metrics_persist_interval_seconds: int = 60
+    redis_socket_timeout: int = 15
+    redis_socket_connect_timeout: int = 5
 
     # App
     app_env: str = "development"

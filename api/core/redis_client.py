@@ -69,8 +69,11 @@ class CacheManager:
                     decode_responses=True,
                     max_connections=20,
                     retry_on_timeout=True,
-                    socket_timeout=5,
-                    socket_connect_timeout=5,
+                    socket_timeout=max(
+                        settings.redis_socket_timeout,
+                        settings.ingestion_worker_poll_timeout + 5,
+                    ),
+                    socket_connect_timeout=settings.redis_socket_connect_timeout,
                     health_check_interval=30
                 )
                 await self._redis.ping()
