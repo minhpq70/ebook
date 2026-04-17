@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
 from typing import Optional
 from datetime import datetime
 from enum import Enum
@@ -12,6 +12,26 @@ class BookCreate(BaseModel):
     author: Optional[str] = None
     description: Optional[str] = None
     language: str = "vi"
+
+
+class BookUploadRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=500, description="Tiêu đề sách")
+    author: Optional[str] = Field(None, max_length=200, description="Tác giả")
+    publisher: Optional[str] = Field(None, max_length=200, description="Nhà xuất bản")
+    published_year: Optional[str] = Field(None, max_length=10, description="Năm xuất bản")
+    category: Optional[str] = Field(None, max_length=100, description="Danh mục sách")
+    page_size: Optional[str] = Field(None, max_length=50, description="Khổ cỡ sách")
+    description: Optional[str] = Field(None, max_length=2000, description="Mô tả sách")
+    language: str = Field("vi", pattern=r"^(vi|en)$", description="Ngôn ngữ (vi/en)")
+
+    @validator('title', 'author', 'publisher', 'published_year', 'category', 'page_size', 'description', pre=True)
+    def sanitize_string(cls, v):
+        if v is None:
+            return v
+        # Loại bỏ ký tự nguy hiểm và trim
+        import re
+        v = re.sub(r'[<>]', '', str(v)).strip()
+        return v if v else None
 
 
 class BookResponse(BaseModel):

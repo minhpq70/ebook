@@ -7,6 +7,7 @@ RAG Engine — Prompt Orchestration + LLM Call
 """
 from __future__ import annotations
 
+import re
 import time
 import asyncio
 import logging
@@ -32,6 +33,13 @@ def is_toc_query(query: str) -> bool:
     """Phát hiện câu hỏi liên quan đến Mục lục."""
     q = query.lower().strip()
     return any(kw in q for kw in _TOC_KEYWORDS)
+
+
+_THINK_RE = re.compile(r"<thought>.*?</thought>", re.DOTALL)
+
+def _strip_thinking(text: str) -> str:
+    """Loại bỏ block <thought>...</thought> từ output của Gemma4 thinking model."""
+    return _THINK_RE.sub("", text).strip()
 
 
 SYSTEM_PROMPTS = {
@@ -165,7 +173,8 @@ async def run_rag_query(
         temperature=temperature,  # 0 cho mục lục (chống hallucination), 0.2 cho Q&A
     )
 
-    answer = response.choices[0].message.content or ""
+    raw_answer = response.choices[0].message.content or ""
+    answer = _strip_thinking(raw_answer)
     tokens_used = response.usage.total_tokens if response.usage else None
     latency_ms = int((time.time() - start_time) * 1000)
 
@@ -268,6 +277,7 @@ async def stream_rag_query(
     client = get_chat_openai()
     full_answer = ""
     tokens_used = None
+    _in_thinking = False  # Track nếu đang trong block <thought>
 
     stream = await client.chat.completions.create(
         model=settings.openai_chat_model,
@@ -286,6 +296,24 @@ async def stream_rag_query(
         if delta and delta.content:
             token = delta.content
             full_answer += token
+
+            # Lọc bỏ nội dung <thought>...</thought> khi streaming
+            if "<thought>" in token:
+                _in_thinking = True
+                # Giữ lại phần trước <thought> nếu có
+                before = token.split("<thought>")[0]
+                if before.strip():
+                    yield f"data: {json.dumps({'type': 'token', 'data': before}, ensure_ascii=False)}\n\n"
+                continue
+            if _in_thinking:
+                if "</thought>" in token:
+                    _in_thinking = False
+                    # Giữ lại phần sau </thought> (đầu câu trả lời thực)
+                    after = token.split("</thought>", 1)[-1]
+                    if after.strip():
+                        yield f"data: {json.dumps({'type': 'token', 'data': after}, ensure_ascii=False)}\n\n"
+                continue  # Bỏ qua token thinking
+
             yield f"data: {json.dumps({'type': 'token', 'data': token}, ensure_ascii=False)}\n\n"
 
         # Lấy usage từ chunk cuối (OpenAI trả về ở chunk cuối cùng)

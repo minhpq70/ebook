@@ -35,6 +35,21 @@ class Settings(BaseSettings):
     jwt_secret: str = ""
     jwt_expire_hours: int = 24          # token người dùng hết hạn sau 24h
     embed_secret: str = ""              # shared secret với hệ thống NXB
+    
+    # Google Service Account (cho logging)
+    google_sa_json: str = ""            # JSON string hoặc base64 encoded
+
+    @property
+    def cors_origins(self) -> list[str]:
+        """Parse CORS origins từ string, validate URLs hợp lệ."""
+        origins = [origin.strip() for origin in self.app_cors_origins.split(",") if origin.strip()]
+        # Validate basic URL format
+        import re
+        url_pattern = re.compile(r"^https?://[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?::\d+)?/?$")
+        for origin in origins:
+            if not url_pattern.match(origin):
+                raise ValueError(f"CORS origin không hợp lệ: {origin}")
+        return origins
 
     @model_validator(mode="after")
     def _validate_secrets(self):

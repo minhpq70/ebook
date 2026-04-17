@@ -8,6 +8,10 @@ import json
 import logging
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 from models.schemas import RAGQueryRequest, RAGQueryResponse
 from services import ingestion, retrieval, rag_engine
@@ -66,6 +70,7 @@ async def _get_validated_chunks(req: RAGQueryRequest):
 
 
 @router.post("/query", response_model=RAGQueryResponse)
+@limiter.limit("10/minute")
 async def query_book(req: RAGQueryRequest):
     """RAG query — blocking, trả về full response."""
     chunks = await _get_validated_chunks(req)
@@ -95,6 +100,7 @@ async def query_book(req: RAGQueryRequest):
 
 
 @router.post("/query/stream")
+@limiter.limit("10/minute")
 async def query_book_stream(req: RAGQueryRequest):
     """
     RAG query — SSE streaming.

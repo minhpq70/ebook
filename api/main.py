@@ -5,10 +5,10 @@ Ebook Platform — Private RAG Backend (POC)
 import logging
 import logging.handlers
 from pathlib import Path
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from core.config import settings
 from routers import books, rag, auth, admin, categories
@@ -49,6 +49,12 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+# Rate limiting setup
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
 # CORS — cho phép Next.js frontend gọi API
 app.add_middleware(
     CORSMiddleware,
@@ -80,9 +86,44 @@ async def cors_aware_http_exception_handler(request: Request, exc: FastAPIHTTPEx
     if allowed:
         headers["Access-Control-Allow-Origin"] = allowed
         headers["Access-Control-Allow-Credentials"] = "true"
+    
+    # Sanitize error message cho production
+    error_detail = exc.detail
+    if settings.app_env == "production":
+        # Ẩn chi tiết internal errors
+        if exc.status_code >= 500:
+            error_detail = "Lỗi máy chủ nội bộ"
+        # Giữ lại client errors nhưng loại bỏ info nhạy cảm
+        elif exc.status_code >= 400:
+            # Có thể thêm logic để filter sensitive info
+            pass
+    
     return JSONResponse(
         status_code=exc.status_code,
-        content={"detail": exc.detail},
+        content={"detail": error_detail},
+        headers=headers,
+    )
+
+
+# Global exception handler cho tất cả unhandled exceptions
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    origin = request.headers.get("origin", "")
+    allowed = origin if origin in settings.cors_origins else ""
+    headers = {}
+    if allowed:
+        headers["Access-Control-Allow-Origin"] = allowed
+        headers["Access-Control-Allow-Credentials"] = "true"
+    
+    # Log internal error
+    logging.error(f"Unhandled exception: {exc}", exc_info=True)
+    
+    # Return sanitized error
+    error_detail = "Lỗi máy chủ nội bộ" if settings.app_env == "production" else str(exc)
+    
+    return JSONResponse(
+        status_code=500,
+        content={"detail": error_detail},
         headers=headers,
     )
 

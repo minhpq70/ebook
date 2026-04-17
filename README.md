@@ -41,7 +41,16 @@ pip install -r requirements.txt
 
 # Cấu hình .env
 cp .env.example .env
-# Điền OPENAI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY vào .env
+# Điền các biến bắt buộc vào .env:
+# - OPENAI_API_KEY
+# - SUPABASE_URL, SUPABASE_SERVICE_KEY
+# - JWT_SECRET (tạo bằng: python3 -c "import secrets; print(secrets.token_urlsafe(48))")
+
+# (TÙY CHỌN) Thiết lập Google Sheets logging:
+# 1. Tạo service account key JSON từ Google Cloud Console
+# 2. Chạy: python convert_sa_json.py (sẽ generate base64 encoded string)
+# 3. Set GOOGLE_SA_JSON=base64_string trong .env
+# 4. Tạo Google Sheet và lấy SHEET_ID từ URL
 
 # Chạy server
 uvicorn main:app --reload --port 8000
@@ -79,16 +88,58 @@ App: http://localhost:3000
 ## RAG Flow (Privacy)
 
 ```
-Bạn đọc hỏi
-    ↓
-Embed query (OpenAI)
-    ↓
-Hybrid search trong pgvector (vector + full-text)
-    ↓
-Lấy top-5 chunks liên quan
-    ↓
-Gửi [query + chunks] → GPT-4o-mini   ← ⚠ KHÔNG gửi toàn bộ sách
-    ↓
+## Deployment
+
+### Render (Khuyên dùng)
+
+1. **Chuẩn bị Google Service Account:**
+   ```bash
+   # 1. Tạo service account trên Google Cloud Console
+   # 2. Download JSON key file
+   # 3. Convert thành base64:
+   cd api
+   python convert_sa_json.py
+   # Copy output base64 string
+   ```
+
+2. **Deploy trên Render:**
+   - Tạo **Web Service** mới
+   - Connect GitHub repository
+   - **Build Command:** `pip install -r requirements.txt`
+   - **Start Command:** `uvicorn main:app --host 0.0.0.0 --port $PORT`
+
+3. **Environment Variables trên Render:**
+   ```
+   # Required
+   OPENAI_API_KEY=sk-proj-...
+   SUPABASE_URL=https://your-project.supabase.co
+   SUPABASE_SERVICE_KEY=eyJhbGciOi...
+   SUPABASE_ANON_KEY=eyJhbGciOi...
+   JWT_SECRET=your-secure-random-jwt-secret
+
+   # Optional - Google Sheets logging
+   GOOGLE_SA_JSON=base64_string_from_convert_script
+   SHEET_ID=your_google_sheet_id
+   SHEET_TAB=Logs
+
+   # App Config
+   APP_ENV=production
+   APP_CORS_ORIGINS=https://your-frontend-domain.com
+   ```
+
+4. **Deploy Frontend:**
+   - Tạo **Static Site** trên Render
+   - Connect GitHub repo (thư mục `web/`)
+   - **Build Command:** `npm run build`
+   - **Publish Directory:** `out`
+   - Set `NEXT_PUBLIC_API_URL` = URL của backend API
+
+### Test Credentials
+
+```bash
+cd api
+python test_credentials.py
+```
 Trả lời + trích nguồn
 ```
 

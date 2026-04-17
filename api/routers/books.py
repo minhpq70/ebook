@@ -9,7 +9,7 @@ import uuid
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Depends
 from fastapi.responses import JSONResponse
 
-from models.schemas import BookResponse, BookListResponse, IngestionStatus
+from models.schemas import BookResponse, BookListResponse, IngestionStatus, BookUploadRequest
 from services import ingestion
 from services.metadata_extractor import extract_metadata_from_pdf
 from core.auth import require_admin
@@ -20,30 +20,49 @@ router = APIRouter(prefix="/books", tags=["Books"])
 @router.post("/upload", response_model=IngestionStatus)
 async def upload_book(
     background_tasks: BackgroundTasks,
+    upload_data: BookUploadRequest = Depends(),
     file: UploadFile = File(..., description="File PDF của sách"),
-    title: str = Form(..., description="Tiêu đề sách"),
-    author: str = Form(None, description="Tác giả"),
-    publisher: str = Form(None, description="Nhà xuất bản"),
-    published_year: str = Form(None, description="Năm xuất bản"),
-    category: str = Form(None, description="Danh mục sách"),
-    page_size: str = Form(None, description="Khổ cỡ sách"),
-    description: str = Form(None, description="Mô tả sách"),
-    language: str = Form("vi", description="Ngôn ngữ (vi/en)"),
     _: dict = Depends(require_admin),
 ):
     """
     Upload PDF — chỉ Admin. Trả về ngay với book_id, ingestion chạy nền.
     Frontend dùng GET /books/{id} để poll status.
     """
+    # Validation file
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Chỉ hỗ trợ file PDF")
-    if file.size and file.size > 50 * 1024 * 1024:
+    
+    # Kiểm tra MIME type
+    allowed_mime_types = ["application/pdf"]
+    if file.content_type not in allowed_mime_types:
+        raise HTTPException(status_code=400, detail="File phải là PDF hợp lệ")
+    
+    # Kiểm tra kích thước (50MB max)
+    max_size = 50 * 1024 * 1024
+    if file.size and file.size > max_size:
         raise HTTPException(status_code=400, detail="File quá lớn (tối đa 50MB)")
-
+    
+    # Đọc và validate nội dung PDF
     pdf_bytes = await file.read()
+    if len(pdf_bytes) < 100:  # PDF tối thiểu phải có header
+        raise HTTPException(status_code=400, detail="File PDF không hợp lệ")
+    
+    # Kiểm tra PDF header
+    if not pdf_bytes.startswith(b"%PDF-"):
+        raise HTTPException(status_code=400, detail="File không phải là PDF hợp lệ")
+
     unique_filename = f"{uuid.uuid4()}_{file.filename}"
 
     # Kích hoạt AI nếu có thông số trống
+    title = upload_data.title
+    author = upload_data.author
+    publisher = upload_data.publisher
+    published_year = upload_data.published_year
+    category = upload_data.category
+    page_size = upload_data.page_size
+    description = upload_data.description
+    language = upload_data.language
+
     is_default_title = (title == file.filename.replace('.pdf', '') or title == file.filename)
     if is_default_title or not author or not publisher or not published_year:
         ai_meta = await extract_metadata_from_pdf(pdf_bytes)

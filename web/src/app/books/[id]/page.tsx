@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ArrowLeft, BookOpen, Send, Loader2, User, Bot, ChevronDown, ChevronUp } from 'lucide-react';
 import { booksAPI, Book } from '@/lib/api';
 import { API_BASE } from '@/lib/config';
+import ReactMarkdown from 'react-markdown';
 
 interface Message { role: 'user' | 'assistant'; content: string; }
 
@@ -62,7 +63,7 @@ export default function BookDetailPage() {
               answer += json.data;
               setMessages(m => { const copy = [...m]; copy[copy.length - 1] = { role: 'assistant', content: answer }; return copy; });
             }
-          } catch {}
+          } catch { }
         }
       }
     } catch {
@@ -161,8 +162,23 @@ export default function BookDetailPage() {
                       <Bot style={{ width: 14, height: 14, color: '#1a237e' }} />
                     </div>
                   )}
-                  <div style={{ maxWidth: '75%', padding: '0.625rem 0.875rem', borderRadius: msg.role === 'user' ? '1rem 1rem 0.25rem 1rem' : '1rem 1rem 1rem 0.25rem', background: msg.role === 'user' ? '#1a237e' : '#f5f6fa', color: msg.role === 'user' ? 'white' : '#1a1a2e', fontSize: '0.875rem', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-                    {msg.content || (chatLoading && i === messages.length - 1 ? '...' : '')}
+                  <div style={{ maxWidth: '75%', padding: '0.625rem 0.875rem', borderRadius: msg.role === 'user' ? '1rem 1rem 0.25rem 1rem' : '1rem 1rem 1rem 0.25rem', background: msg.role === 'user' ? '#1a237e' : '#f5f6fa', color: msg.role === 'user' ? 'white' : '#1a1a2e', fontSize: '0.875rem', lineHeight: 1.6 }}>
+                    {msg.role === 'assistant' ? (
+                      <ReactMarkdown
+                        components={{
+                          h1: ({ children }) => <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: '0.5rem 0 0.25rem' }}>{children}</h3>,
+                          h2: ({ children }) => <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: '0.5rem 0 0.25rem' }}>{children}</h3>,
+                          h3: ({ children }) => <h4 style={{ fontSize: '0.9rem', fontWeight: 600, margin: '0.5rem 0 0.25rem' }}>{children}</h4>,
+                          p: ({ children }) => <p style={{ margin: '0.25rem 0' }}>{children}</p>,
+                          ul: ({ children }) => <ul style={{ paddingLeft: '1.25rem', margin: '0.25rem 0' }}>{children}</ul>,
+                          ol: ({ children }) => <ol style={{ paddingLeft: '1.25rem', margin: '0.25rem 0' }}>{children}</ol>,
+                          li: ({ children }) => <li style={{ margin: '0.125rem 0' }}>{children}</li>,
+                          strong: ({ children }) => <strong style={{ fontWeight: 600 }}>{children}</strong>,
+                        }}
+                      >{msg.content || (chatLoading && i === messages.length - 1 ? '...' : '')}</ReactMarkdown>
+                    ) : (
+                      <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
+                    )}
                   </div>
                   {msg.role === 'user' && (
                     <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#1a237e', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>

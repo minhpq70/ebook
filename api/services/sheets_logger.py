@@ -2,10 +2,20 @@
 Google Sheets Logger
 Ghi log câu hỏi người dùng (query, tokens, chi phí) vào Google Sheet.
 
-LƯU Ý RENDER:
-  - Cần upload file service_account.json lên Render dưới dạng Secret File
-    (Dashboard → Service → Environment → Secret Files → /etc/secrets/service_account.json)
-  - Hoặc encode JSON thành base64 rồi lưu vào env var GOOGLE_SA_JSON
+CÁCH THIẾT LẬP CREDENTIALS (chọn 1 trong 3):
+
+1. Environment variable GOOGLE_SA_JSON (khuyên dùng cho production):
+   - Tạo service account key JSON từ Google Cloud Console
+   - Chạy: python convert_sa_json.py (sẽ generate base64 encoded string)
+   - Set: GOOGLE_SA_JSON="base64_string" trong .env
+
+2. File service_account.json (development only):
+   - Đặt file tại api/service_account.json
+   - KHÔNG commit lên git!
+
+3. Google Cloud default credentials (GCP production):
+   - Sử dụng GOOGLE_APPLICATION_CREDENTIALS hoặc default service account
+   - Tự động detect nếu không có GOOGLE_SA_JSON
 """
 import json
 import asyncio
@@ -28,10 +38,47 @@ SA_FILE_PATHS = [            # tìm file theo thứ tự ưu tiên
 _sheet = None   # cache worksheet object
 
 
-def _get_sa_path() -> Optional[Path]:
-    for p in SA_FILE_PATHS:
-        if p.exists():
-            return p
+def _get_credentials():
+    """Lấy Google credentials theo thứ tự ưu tiên."""
+    import os
+    import base64
+    
+    # 1. Từ environment variable GOOGLE_SA_JSON
+    sa_json = os.getenv("GOOGLE_SA_JSON")
+    if sa_json:
+        try:
+            # Thử decode base64 trước
+            try:
+                json_str = base64.b64decode(sa_json).decode('utf-8')
+            except:
+                # Nếu không phải base64, coi là JSON string trực tiếp
+                json_str = sa_json
+            
+            creds_dict = json.loads(json_str)
+            from google.oauth2.service_account import Credentials
+            scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+            return Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        except Exception as e:
+            logger.warning("sheets_logger: lỗi parse GOOGLE_SA_JSON — %s", e)
+    
+    # 2. Từ file service_account.json
+    sa_path = _get_sa_path()
+    if sa_path:
+        try:
+            from google.oauth2.service_account import Credentials
+            scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+            return Credentials.from_service_account_file(str(sa_path), scopes=scopes)
+        except Exception as e:
+            logger.warning("sheets_logger: lỗi load từ file — %s", e)
+    
+    # 3. Từ Google Cloud default credentials
+    try:
+        from google.auth import default
+        creds, _ = default(scopes=["https://www.googleapis.com/auth/spreadsheets"])
+        return creds
+    except Exception as e:
+        logger.warning("sheets_logger: không tìm thấy credentials — %s", e)
+    
     return None
 
 
@@ -43,18 +90,12 @@ def _init_sheet():
 
     try:
         import gspread
-        from google.oauth2.service_account import Credentials
 
-        scopes = [
-            "https://www.googleapis.com/auth/spreadsheets",
-        ]
-
-        sa_path = _get_sa_path()
-        if sa_path is None:
-            logger.warning("sheets_logger: không tìm thấy service_account.json, bỏ qua Sheets logging")
+        creds = _get_credentials()
+        if creds is None:
+            logger.warning("sheets_logger: không tìm thấy credentials, bỏ qua Sheets logging")
             return None
 
-        creds = Credentials.from_service_account_file(str(sa_path), scopes=scopes)
         gc = gspread.authorize(creds)
         spreadsheet = gc.open_by_key(SHEET_ID)
 

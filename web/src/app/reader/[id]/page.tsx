@@ -9,6 +9,7 @@ import {
 import { booksAPI, Book, ChunkInfo, TaskType } from '@/lib/api';
 import { API_BASE } from '@/lib/config';
 import PDFViewer from '@/components/PDFViewer';
+import ReactMarkdown from 'react-markdown';
 
 type Message = {
   id: string;
@@ -20,11 +21,11 @@ type Message = {
 };
 
 const TASK_OPTIONS: { value: TaskType; label: string; emoji: string }[] = [
-  { value: 'qa',                 label: 'Hỏi đáp',        emoji: '💬' },
-  { value: 'explain',           label: 'Giải thích',      emoji: '🔍' },
-  { value: 'summarize_chapter', label: 'Tóm tắt chương',  emoji: '📝' },
-  { value: 'summarize_book',    label: 'Tóm tắt sách',    emoji: '📚' },
-  { value: 'suggest',           label: 'Gợi ý',           emoji: '✨' },
+  { value: 'qa', label: 'Hỏi đáp', emoji: '💬' },
+  { value: 'explain', label: 'Giải thích', emoji: '🔍' },
+  { value: 'summarize_chapter', label: 'Tóm tắt chương', emoji: '📝' },
+  { value: 'summarize_book', label: 'Tóm tắt sách', emoji: '📚' },
+  { value: 'suggest', label: 'Gợi ý', emoji: '✨' },
 ];
 
 export default function ReaderPage() {
@@ -46,12 +47,12 @@ export default function ReaderPage() {
       booksAPI.get(id),
       booksAPI.getPdfUrl(id),
     ])
-    .then(([bookInfo, urlInfo]) => {
-      setBook(bookInfo);
-      setPdfUrl(urlInfo.url);
-    })
-    .catch(e => setError(e.message))
-    .finally(() => setLoading(false));
+      .then(([bookInfo, urlInfo]) => {
+        setBook(bookInfo);
+        setPdfUrl(urlInfo.url);
+      })
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
   }, [id]);
 
   useEffect(() => {
@@ -170,8 +171,8 @@ export default function ReaderPage() {
         {/* Main PDF Area */}
         <div style={{ flex: chatOpen ? '0 0 60%' : 1, transition: 'all 0.3s ease', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           {pdfUrl ? (
-            <PDFViewer 
-              url={pdfUrl} 
+            <PDFViewer
+              url={pdfUrl}
               onTextSelect={(text) => {
                 setTaskType('explain');
                 setInput(`Hãy giải thích đoạn văn bản sau: "${text}"`);
@@ -242,8 +243,23 @@ export default function ReaderPage() {
                         </div>
                       ) : (
                         <>
-                          <div style={{ whiteSpace: 'pre-wrap' }}>
-                            {msg.content}
+                          <div>
+                            {msg.role === 'assistant' ? (
+                              <ReactMarkdown
+                                components={{
+                                  h1: ({ children }) => <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'white', margin: '0.5rem 0 0.25rem' }}>{children}</h3>,
+                                  h2: ({ children }) => <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'white', margin: '0.5rem 0 0.25rem' }}>{children}</h3>,
+                                  h3: ({ children }) => <h4 style={{ fontSize: '0.9rem', fontWeight: 600, color: 'white', margin: '0.5rem 0 0.25rem' }}>{children}</h4>,
+                                  p: ({ children }) => <p style={{ margin: '0.25rem 0' }}>{children}</p>,
+                                  ul: ({ children }) => <ul style={{ paddingLeft: '1.25rem', margin: '0.25rem 0' }}>{children}</ul>,
+                                  ol: ({ children }) => <ol style={{ paddingLeft: '1.25rem', margin: '0.25rem 0' }}>{children}</ol>,
+                                  li: ({ children }) => <li style={{ margin: '0.125rem 0' }}>{children}</li>,
+                                  strong: ({ children }) => <strong style={{ color: 'white' }}>{children}</strong>,
+                                }}
+                              >{msg.content}</ReactMarkdown>
+                            ) : (
+                              <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
+                            )}
                             {msg.streaming && (
                               <span style={{ display: 'inline-block', width: 2, height: '1em', background: '#6c63ff', marginLeft: 2, animation: 'blink 1s step-end infinite', verticalAlign: 'text-bottom' }} />
                             )}
