@@ -221,6 +221,91 @@ METRICS_PERSIST_INTERVAL_SECONDS=60
 
 ---
 
+## 2.1.1. Cách tạo Redis trên Render
+
+Hệ thống hiện đang dùng Redis cho:
+
+- cache
+- ingestion queue
+- progress tracking
+- persisted metrics snapshot
+
+Vì vậy trên Render **không được để**:
+
+```env
+REDIS_URL=redis://localhost:6379
+```
+
+`localhost` chỉ đúng nếu Redis chạy trong cùng container, còn với Render thì backend và Redis là các service riêng.
+
+### Các bước tạo Redis
+
+1. Vào [Render Dashboard](https://dashboard.render.com)
+2. Nhấn `New +`
+3. Chọn `Key Value`
+4. Tạo service Redis, ví dụ tên `ebook-redis`
+5. Chờ service sẵn sàng
+
+### Lấy Redis URL
+
+Sau khi tạo xong:
+
+1. Mở service Redis vừa tạo
+2. Tìm:
+   - `Internal Connection String`
+   - hoặc `Redis URL`
+3. Copy giá trị đó
+
+Ví dụ:
+```env
+redis://default:<password>@<host>:6379
+```
+
+hoặc:
+```env
+redis://red-xxxxxxxxxxxx:6379
+```
+
+### Gán vào backend và worker
+
+Vào service backend trên Render:
+
+```env
+REDIS_URL=<giá trị Redis URL do Render cung cấp>
+```
+
+Nếu có worker ingestion riêng, worker cũng phải dùng cùng giá trị:
+
+```env
+REDIS_URL=<giá trị Redis URL do Render cung cấp>
+```
+
+### Khuyến nghị
+
+- Nếu backend và Redis cùng trên Render, ưu tiên dùng `Internal Connection String`
+- Không dùng `localhost`
+- Không để trống
+- Không tự điền host/password giả
+
+### Kiểm tra sau khi cấu hình
+
+Sau khi thêm `REDIS_URL`:
+
+1. Redeploy backend
+2. Redeploy worker nếu có
+3. Upload một file PDF nhỏ
+4. Kiểm tra sách có đi qua:
+   - `queued`
+   - `processing`
+   - `ready`
+
+Nếu sách đứng mãi ở `queued`, gần như chắc là:
+
+- worker chưa chạy
+- hoặc worker/backend chưa dùng đúng `REDIS_URL`
+
+---
+
 ## 2.2. Flow deploy khuyến nghị khi có migration Supabase
 
 Khi thay đổi liên quan cả SQL lẫn backend, thứ tự an toàn nên là:
