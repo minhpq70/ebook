@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     redis_enabled: bool = True
     redis_url: str = "redis://localhost:6379"  # Default Redis URL
 
+    # Error Tracking
+    error_webhook_url: str = ""  # Slack/Discord webhook URL cho alert lỗi
+
     @property
     def cors_origins(self) -> list[str]:
         """Parse CORS origins từ string, validate URLs hợp lệ."""

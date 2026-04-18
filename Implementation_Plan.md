@@ -106,10 +106,10 @@
 ### Phase 3: Giám sát & Mở rộng quy mô (Tuần 3)
 
 #### 3.1 Giám sát hiệu năng
-**Tệp:** `api/services/monitoring.py`, `api/routers/metrics.py`
+**Tệp:** `api/services/monitoring.py`, `api/services/error_tracker.py`, `api/routers/metrics.py`, `web/src/app/admin/metrics/page.tsx`
 - [x] Thêm thu thập performance metrics
-- [~] Triển khai dashboard/query analytics: một phần. Đã có `/metrics/summary`, `/metrics/analytics`, `/metrics/prometheus`, nhưng chưa có dashboard UI riêng
-- [ ] Thêm error tracking và alerting
+- [x] Triển khai dashboard/query analytics: Dashboard UI tại `/admin/metrics` với tab Tổng quan (memory, requests, queries, cache) và tab Lỗi (danh sách lỗi có stack trace)
+- [x] Thêm error tracking và alerting: `services/error_tracker.py` với in-memory ring buffer, Supabase persistence, webhook alerting cho lỗi critical. 3 endpoints mới: `/metrics/errors`, `/metrics/errors/summary`, `/metrics/errors/clear`
 - [~] Tạo performance regression tests: một phần. Đã có regression tests cho logic metrics/embedding/retrieval, nhưng chưa có benchmark/performance regression test đúng nghĩa
 
 #### 3.2 Hạ tầng auto-scaling
@@ -133,13 +133,12 @@
 ### Đã hoàn thành
 - Phase 1 gần như hoàn tất; 2 mục còn lại chỉ đạt mức một phần so với thiết kế lý tưởng ban đầu
 - Phase 2 phần lớn đã được triển khai trong codebase hiện tại
-- Phase 3.1 đã triển khai được phần monitoring/metrics backend khá đầy đủ
+- Phase 3.1 đã hoàn thành: monitoring backend đầy đủ + error tracking + dashboard UI admin
 
 ### Đang ở mức một phần
 - OCR song song hoàn chỉnh và confidence scoring đầy đủ
 - Hỗ trợ file rất lớn theo kiểu streaming end-to-end
 - Worker process model tách khỏi FastAPI hoàn toàn
-- Dashboard UI cho query analytics
 - Performance regression benchmark đúng nghĩa
 
 ### Chưa bắt đầu đáng kể

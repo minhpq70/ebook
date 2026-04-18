@@ -170,12 +170,19 @@ interface UpdateBookResponse {
 // ── Admin API ─────────────────────────────────────────────────────────────────
 
 export const adminAPI = {
-  getConfig:   () => authFetch<AIConfigResponse>('/admin/config'),
+  getConfig: () => authFetch<AIConfigResponse>('/admin/config'),
   updateConfig: (data: { provider: string; chat_model: string; embedding_model: string }) =>
     authFetch<{ message: string; config: AIConfig }>('/admin/config', { method: 'PUT', body: JSON.stringify(data) }),
-  getLogs:     (lines = 100) => authFetch<LogsResponse>(`/admin/logs?lines=${lines}`),
-  updateBook:  (id: string, data: Record<string, string>) =>
+  getLogs: (lines = 100) => authFetch<LogsResponse>(`/admin/logs?lines=${lines}`),
+  updateBook: (id: string, data: Record<string, string>) =>
     authFetch<UpdateBookResponse>(`/admin/books/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+
+  // Metrics & Monitoring
+  getRuntime: () => authFetch<Record<string, unknown>>('/metrics/runtime'),
+  getSummary: () => authFetch<Record<string, unknown>>('/metrics/summary'),
+  getAnalytics: () => authFetch<Record<string, unknown>>('/metrics/analytics'),
+  getErrors: (limit = 50) => authFetch<{ errors: Record<string, unknown>[]; summary: Record<string, unknown> }>(`/metrics/errors?limit=${limit}`),
+  clearErrors: () => authFetch<{ message: string }>('/metrics/errors/clear', { method: 'POST' }),
 };
 
 export { authFetch };

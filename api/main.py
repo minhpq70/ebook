@@ -22,6 +22,7 @@ from routers import books, rag, auth, admin, categories, metrics
 from services.ingestion_worker import run_worker_forever
 from services.metrics_registry import get_metrics_registry
 from services.monitoring import get_memory_guard_decision, get_runtime_snapshot, start_runtime_monitoring
+from services.error_tracker import record_error
 
 # ── Logging setup ────────────────────────────────────────────────────────────
 # LƯU Ý TRIỂN KHAI:
@@ -209,6 +210,15 @@ async def cors_aware_http_exception_handler(request: Request, exc: FastAPIHTTPEx
             # Có thể thêm logic để filter sensitive info
             pass
     
+    # Track lỗi 4xx/5xx
+    if exc.status_code >= 400:
+        record_error(
+            exc=exc,
+            path=request.url.path,
+            method=request.method,
+            status_code=exc.status_code,
+        )
+
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": error_detail},
@@ -228,6 +238,12 @@ async def global_exception_handler(request: Request, exc: Exception):
     
     # Log internal error
     logging.error(f"Unhandled exception: {exc}", exc_info=True)
+    record_error(
+        exc=exc,
+        path=request.url.path,
+        method=request.method,
+        status_code=500,
+    )
     
     # Return sanitized error
     error_detail = "Lỗi máy chủ nội bộ" if settings.app_env == "production" else str(exc)
