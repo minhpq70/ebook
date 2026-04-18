@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from core.auth import require_admin
 from core.supabase_client import get_supabase
 from services.ai_config_service import (
-    AI_PROVIDERS, get_ai_config, update_ai_config
+    AI_PROVIDERS, get_ai_config, update_ai_config, get_embedding_providers
 )
 from services.ingestion_queue import enqueue_ingestion_job
 
@@ -26,6 +26,7 @@ LOG_FILE = Path(__file__).parent.parent / "logs" / "queries.log"
 class UpdateConfigRequest(BaseModel):
     provider: str
     chat_model: str
+    embedding_provider: str
     embedding_model: str
 
 
@@ -47,6 +48,7 @@ def get_config(_: dict = Depends(require_admin)):
     return {
         "current": get_ai_config(),
         "providers": AI_PROVIDERS,
+        "embedding_providers": get_embedding_providers(),
     }
 
 
@@ -55,7 +57,7 @@ def put_config(req: UpdateConfigRequest, _: dict = Depends(require_admin)):
     """Cập nhật provider + model. Hệ thống sẽ dùng model mới cho request tiếp theo."""
     if req.provider not in AI_PROVIDERS:
         raise HTTPException(status_code=400, detail=f"Provider không hợp lệ: {req.provider}")
-    updated = update_ai_config(req.provider, req.chat_model, req.embedding_model)
+    updated = update_ai_config(req.provider, req.chat_model, req.embedding_provider, req.embedding_model)
     return {"message": "Cập nhật cấu hình thành công", "config": updated}
 
 

@@ -9,7 +9,7 @@ import { useRouter } from 'next/navigation';
 type Tab = 'books' | 'logs' | 'config';
 
 interface LogEntry { timestamp: string; mode?: string; book?: string; type?: string; tokens?: string; cost?: string; q?: string; }
-interface AIConfig { current: { provider: string; chat_model: string; embedding_model: string }; providers: Record<string, any>; }
+interface AIConfig { current: { provider: string; chat_model: string; embedding_provider: string; embedding_model: string }; providers: Record<string, any>; embedding_providers: Record<string, any>; }
 
 export default function AdminPage() {
   const router = useRouter();
@@ -37,6 +37,7 @@ export default function AdminPage() {
   const [editConfig, setEditConfig] = useState(false);
   const [newProvider, setNewProvider] = useState('');
   const [newChatModel, setNewChatModel] = useState('');
+  const [newEmbedProvider, setNewEmbedProvider] = useState('');
   const [newEmbedModel, setNewEmbedModel] = useState('');
   const [configSaving, setConfigSaving] = useState(false);
   const [configMsg, setConfigMsg] = useState('');
@@ -53,7 +54,7 @@ export default function AdminPage() {
 
   const fetchConfig = () => {
     setConfigLoading(true);
-    adminAPI.getConfig().then(d => { setConfig(d); setNewProvider(d.current.provider); setNewChatModel(d.current.chat_model); setNewEmbedModel(d.current.embedding_model); }).catch(console.error).finally(() => setConfigLoading(false));
+    adminAPI.getConfig().then(d => { setConfig(d); setNewProvider(d.current.provider); setNewChatModel(d.current.chat_model); setNewEmbedProvider(d.current.embedding_provider || 'openai'); setNewEmbedModel(d.current.embedding_model); }).catch(console.error).finally(() => setConfigLoading(false));
   };
 
   useEffect(() => { fetchBooks(); categoriesAPI.list().then(setCategories).catch(console.error); }, []);
@@ -95,7 +96,7 @@ export default function AdminPage() {
   const saveConfig = async () => {
     setConfigSaving(true); setConfigMsg('');
     try {
-      await adminAPI.updateConfig({ provider: newProvider, chat_model: newChatModel, embedding_model: newEmbedModel });
+      await adminAPI.updateConfig({ provider: newProvider, chat_model: newChatModel, embedding_provider: newEmbedProvider, embedding_model: newEmbedModel });
       setConfigMsg('✅ Cập nhật thành công!'); setEditConfig(false); fetchConfig();
     } catch (e: any) { setConfigMsg('❌ ' + e.message); } finally { setConfigSaving(false); }
   };
@@ -285,39 +286,52 @@ export default function AdminPage() {
                   </div>
                   {!editConfig ? (
                     <div className="space-y-3">
-                      {[{ label: 'Provider', value: config.providers[config.current.provider]?.name || config.current.provider },
-                      { label: 'Chat Model', value: config.current.chat_model },
-                      { label: 'Embedding Model', value: config.current.embedding_model }
-                      ].map(({ label, value }) => (
-                        <div key={label} className="flex items-center justify-between py-2 border-b border-[#2d3148]/50">
-                          <span className="text-[#8890a4] text-sm">{label}</span>
-                          <span className="text-white font-medium text-sm font-mono">{value}</span>
+                      <p className="text-xs text-[#6c63ff] font-semibold uppercase tracking-wider">🤖 Chat / RAG</p>
+                      <div className="flex items-center justify-between py-2 border-b border-[#2d3148]/50">
+                        <span className="text-[#8890a4] text-sm">Provider</span>
+                        <span className="text-white font-medium text-sm">{config.providers[config.current.provider]?.name || config.current.provider}</span>
+                      </div>
+                      <div className="flex items-center justify-between py-2 border-b border-[#2d3148]/50">
+                        <span className="text-[#8890a4] text-sm">Model</span>
+                        <span className="text-white font-medium text-sm font-mono">{config.current.chat_model}</span>
+                      </div>
+                      {config.providers[config.current.provider]?.base_url && (
+                        <div className="flex items-center justify-between py-2 border-b border-[#2d3148]/50">
+                          <span className="text-[#8890a4] text-sm">Base URL</span>
+                          <code className="text-[#6c63ff] text-xs">{config.providers[config.current.provider].base_url}</code>
                         </div>
-                      ))}
+                      )}
+                      <p className="text-xs text-[#34d399] font-semibold uppercase tracking-wider pt-3">📐 Embedding</p>
+                      <div className="flex items-center justify-between py-2 border-b border-[#2d3148]/50">
+                        <span className="text-[#8890a4] text-sm">Provider</span>
+                        <span className="text-white font-medium text-sm">{config.embedding_providers?.[config.current.embedding_provider]?.name || config.current.embedding_provider || 'OpenAI'}</span>
+                      </div>
+                      <div className="flex items-center justify-between py-2 border-b border-[#2d3148]/50">
+                        <span className="text-[#8890a4] text-sm">Model</span>
+                        <span className="text-white font-medium text-sm font-mono">{config.current.embedding_model}</span>
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-4">
+                      {/* ── Chat / RAG ── */}
+                      <p className="text-xs text-[#6c63ff] font-semibold uppercase tracking-wider">🤖 Chat / RAG</p>
                       <div>
-                        <label className="text-xs text-[#8890a4] mb-1 block">Provider</label>
+                        <label className="text-xs text-[#8890a4] mb-1 block">Chat Provider</label>
                         <select className="input" value={newProvider} onChange={e => {
                           setNewProvider(e.target.value);
-                          const prov = config.providers[e.target.value];
-                          const chatMs = prov?.chat_models || [];
-                          const embedMs = prov?.embedding_models || [];
+                          const chatMs = config.providers[e.target.value]?.chat_models || [];
                           if (chatMs.length) setNewChatModel(chatMs[0].id);
-                          // Giữ embedding model cũ nếu provider mới không có embedding
-                          if (embedMs.length) setNewEmbedModel(embedMs[0].id);
                         }}>
                           {Object.entries(config.providers).map(([k, v]: any) => <option key={k} value={k}>{v.name}</option>)}
                         </select>
                         {config.providers[newProvider]?.base_url && (
                           <p className="text-xs text-[#8890a4] mt-1">
-                            🔗 Base URL: <code className="text-[#6c63ff]">{config.providers[newProvider].base_url}</code>
+                            🔗 <code className="text-[#6c63ff]">{config.providers[newProvider].base_url}</code>
                           </p>
                         )}
                       </div>
                       <div>
-                        <label className="text-xs text-[#8890a4] mb-1 block">Chat / RAG Model</label>
+                        <label className="text-xs text-[#8890a4] mb-1 block">Chat Model</label>
                         <select className="input" value={newChatModel} onChange={e => setNewChatModel(e.target.value)}>
                           {(config.providers[newProvider]?.chat_models || []).map((m: any) => (
                             <option key={m.id} value={m.id}>
@@ -326,20 +340,32 @@ export default function AdminPage() {
                           ))}
                         </select>
                       </div>
+
+                      {/* ── Embedding ── */}
+                      <div className="border-t border-[#2d3148] pt-4">
+                        <p className="text-xs text-[#34d399] font-semibold uppercase tracking-wider mb-3">📐 Embedding</p>
+                      </div>
+                      <div>
+                        <label className="text-xs text-[#8890a4] mb-1 block">Embedding Provider</label>
+                        <select className="input" value={newEmbedProvider} onChange={e => {
+                          setNewEmbedProvider(e.target.value);
+                          const embedMs = config.embedding_providers?.[e.target.value]?.embedding_models || [];
+                          if (embedMs.length) setNewEmbedModel(embedMs[0].id);
+                        }}>
+                          {Object.entries(config.embedding_providers || {}).map(([k, v]: any) => <option key={k} value={k}>{v.name}</option>)}
+                        </select>
+                      </div>
                       <div>
                         <label className="text-xs text-[#8890a4] mb-1 block">Embedding Model</label>
-                        {(config.providers[newProvider]?.embedding_models || []).length > 0 ? (
-                          <select className="input" value={newEmbedModel} onChange={e => setNewEmbedModel(e.target.value)}>
-                            {(config.providers[newProvider]?.embedding_models || []).map((m: any) => (
-                              <option key={m.id} value={m.id}>{m.name}</option>
-                            ))}
-                          </select>
-                        ) : (
-                          <div className="input bg-[#1a1d27] text-[#8890a4] cursor-not-allowed">
-                            {newEmbedModel || 'text-embedding-3-small'} <span className="text-xs">(sử dụng embedding từ OpenAI)</span>
-                          </div>
-                        )}
+                        <select className="input" value={newEmbedModel} onChange={e => setNewEmbedModel(e.target.value)}>
+                          {(config.embedding_providers?.[newEmbedProvider]?.embedding_models || []).map((m: any) => (
+                            <option key={m.id} value={m.id}>
+                              {m.name} {m.price === 0 ? '— Miễn phí' : `— $${m.price} / 1M tokens`}
+                            </option>
+                          ))}
+                        </select>
                       </div>
+
                       {configMsg && <p className="text-sm">{configMsg}</p>}
                       <button onClick={saveConfig} disabled={configSaving} className="btn-primary">
                         {configSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Check className="w-4 h-4" /> Lưu cấu hình</>}

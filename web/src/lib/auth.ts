@@ -171,7 +171,7 @@ interface UpdateBookResponse {
 
 export const adminAPI = {
   getConfig: () => authFetch<AIConfigResponse>('/admin/config'),
-  updateConfig: (data: { provider: string; chat_model: string; embedding_model: string }) =>
+  updateConfig: (data: { provider: string; chat_model: string; embedding_provider: string; embedding_model: string }) =>
     authFetch<{ message: string; config: AIConfig }>('/admin/config', { method: 'PUT', body: JSON.stringify(data) }),
   getLogs: (lines = 100) => authFetch<LogsResponse>(`/admin/logs?lines=${lines}`),
   updateBook: (id: string, data: Record<string, string>) =>

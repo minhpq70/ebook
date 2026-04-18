@@ -82,6 +82,16 @@ def calc_cost(model_id: str, tokens_used: int | None) -> str:
     return f"${cost:.6f}"
 
 
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+def get_embedding_providers() -> dict:
+    """Trả về chỉ các provider có embedding models."""
+    return {
+        k: v for k, v in AI_PROVIDERS.items()
+        if v.get("embedding_models")
+    }
+
+
 # ── Supabase CRUD ─────────────────────────────────────────────────────────────
 
 def get_ai_config() -> dict:
@@ -89,22 +99,33 @@ def get_ai_config() -> dict:
     supabase = get_supabase()
     result = supabase.table("ai_config").select("*").eq("id", 1).execute()
     if result.data:
-        return result.data[0]
+        row = result.data[0]
+        # Backward compat: nếu chưa có embedding_provider thì dùng provider
+        if "embedding_provider" not in row or not row.get("embedding_provider"):
+            row["embedding_provider"] = "openai"
+        return row
     # Fallback: khớp với cấu hình .env mặc định
     return {
         "provider": "google_ai_studio",
         "chat_model": "gemma-4-31b-it",
+        "embedding_provider": "openai",
         "embedding_model": "text-embedding-3-small",
     }
 
 
-def update_ai_config(provider: str, chat_model: str, embedding_model: str) -> dict:
-    """Cập nhật cấu hình AI và lưu vào Supabase."""
+def update_ai_config(
+    provider: str,
+    chat_model: str,
+    embedding_provider: str,
+    embedding_model: str,
+) -> dict:
+    """Cập nhật cấu hình AI (Chat + Embedding tách riêng) và lưu vào Supabase."""
     supabase = get_supabase()
     result = supabase.table("ai_config").upsert({
         "id": 1,
         "provider": provider,
         "chat_model": chat_model,
+        "embedding_provider": embedding_provider,
         "embedding_model": embedding_model,
         "updated_at": "now()",
     }).execute()
@@ -114,3 +135,8 @@ def update_ai_config(provider: str, chat_model: str, embedding_model: str) -> di
 def get_current_chat_model() -> str:
     """Lấy tên model chat đang dùng."""
     return get_ai_config().get("chat_model", "gpt-4o-mini")
+
+
+def get_current_embedding_model() -> str:
+    """Lấy tên model embedding đang dùng."""
+    return get_ai_config().get("embedding_model", "text-embedding-3-small")
