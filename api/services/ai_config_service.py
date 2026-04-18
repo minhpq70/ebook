@@ -12,6 +12,8 @@ from core.supabase_client import get_supabase
 AI_PROVIDERS = {
     "openai": {
         "name": "OpenAI",
+        "base_url": None,  # uses default OpenAI endpoint
+        "api_key_env": "OPENAI_API_KEY",
         "chat_models": [
             {"id": "gpt-4o-mini",  "name": "GPT-4o Mini",  "input_price": 0.15,  "output_price": 0.60},
             {"id": "gpt-4o",       "name": "GPT-4o",        "input_price": 2.50,  "output_price": 10.00},
@@ -22,12 +24,26 @@ AI_PROVIDERS = {
             {"id": "text-embedding-3-large", "name": "Embedding 3 Large", "price": 0.13},
         ],
     },
+    "google_ai_studio": {
+        "name": "Google AI Studio (Gemma)",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "api_key_env": "OPENAI_CHAT_API_KEY",
+        "chat_models": [
+            {"id": "gemma-4-31b-it",   "name": "Gemma 4 31B IT",   "input_price": 0.00, "output_price": 0.00},
+            {"id": "gemma-3-27b-it",   "name": "Gemma 3 27B IT",   "input_price": 0.00, "output_price": 0.00},
+            {"id": "gemma-3-12b-it",   "name": "Gemma 3 12B IT",   "input_price": 0.00, "output_price": 0.00},
+            {"id": "gemma-3-4b-it",    "name": "Gemma 3 4B IT",    "input_price": 0.00, "output_price": 0.00},
+        ],
+        "embedding_models": [],  # Dùng embedding của OpenAI
+    },
     "google": {
         "name": "Google Gemini",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "api_key_env": "OPENAI_CHAT_API_KEY",
         "chat_models": [
-            {"id": "gemini-1.5-flash",   "name": "Gemini 1.5 Flash",  "input_price": 0.075, "output_price": 0.30},
-            {"id": "gemini-1.5-pro",     "name": "Gemini 1.5 Pro",    "input_price": 1.25,  "output_price": 5.00},
-            {"id": "gemini-2.0-flash",   "name": "Gemini 2.0 Flash",  "input_price": 0.10,  "output_price": 0.40},
+            {"id": "gemini-2.5-flash",    "name": "Gemini 2.5 Flash",    "input_price": 0.15, "output_price": 0.60},
+            {"id": "gemini-2.5-pro",       "name": "Gemini 2.5 Pro",     "input_price": 1.25, "output_price": 10.00},
+            {"id": "gemini-2.0-flash",     "name": "Gemini 2.0 Flash",   "input_price": 0.10, "output_price": 0.40},
         ],
         "embedding_models": [
             {"id": "text-embedding-004", "name": "Text Embedding 004", "price": 0.00},
@@ -35,6 +51,8 @@ AI_PROVIDERS = {
     },
     "anthropic": {
         "name": "Anthropic Claude",
+        "base_url": None,
+        "api_key_env": "OPENAI_CHAT_API_KEY",
         "chat_models": [
             {"id": "claude-3-haiku-20240307",  "name": "Claude 3 Haiku",       "input_price": 0.25,  "output_price": 1.25},
             {"id": "claude-3-5-sonnet-20241022","name": "Claude 3.5 Sonnet",   "input_price": 3.00,  "output_price": 15.00},
@@ -72,9 +90,10 @@ def get_ai_config() -> dict:
     result = supabase.table("ai_config").select("*").eq("id", 1).execute()
     if result.data:
         return result.data[0]
+    # Fallback: khớp với cấu hình .env mặc định
     return {
-        "provider": "openai",
-        "chat_model": "gpt-4o-mini",
+        "provider": "google_ai_studio",
+        "chat_model": "gemma-4-31b-it",
         "embedding_model": "text-embedding-3-small",
     }
 

@@ -168,11 +168,11 @@ export default function AdminPage() {
                           ].map(({ f, label }) => (
                             <div key={f}>
                               <label className="text-xs text-[#8890a4] mb-1 block">{label}</label>
-                              <input 
-                                className="input" 
+                              <input
+                                className="input"
                                 list={f === 'category' ? 'admin-category-list' : undefined}
-                                value={editData[f] || ''} 
-                                onChange={e => setEditData(p => ({ ...p, [f]: e.target.value }))} 
+                                value={editData[f] || ''}
+                                onChange={e => setEditData(p => ({ ...p, [f]: e.target.value }))}
                               />
                             </div>
                           ))}
@@ -286,8 +286,8 @@ export default function AdminPage() {
                   {!editConfig ? (
                     <div className="space-y-3">
                       {[{ label: 'Provider', value: config.providers[config.current.provider]?.name || config.current.provider },
-                        { label: 'Chat Model', value: config.current.chat_model },
-                        { label: 'Embedding Model', value: config.current.embedding_model }
+                      { label: 'Chat Model', value: config.current.chat_model },
+                      { label: 'Embedding Model', value: config.current.embedding_model }
                       ].map(({ label, value }) => (
                         <div key={label} className="flex items-center justify-between py-2 border-b border-[#2d3148]/50">
                           <span className="text-[#8890a4] text-sm">{label}</span>
@@ -299,25 +299,46 @@ export default function AdminPage() {
                     <div className="space-y-4">
                       <div>
                         <label className="text-xs text-[#8890a4] mb-1 block">Provider</label>
-                        <select className="input" value={newProvider} onChange={e => { setNewProvider(e.target.value); const ms = config.providers[e.target.value]?.chat_models || []; if (ms.length) setNewChatModel(ms[0].id); }}>
+                        <select className="input" value={newProvider} onChange={e => {
+                          setNewProvider(e.target.value);
+                          const prov = config.providers[e.target.value];
+                          const chatMs = prov?.chat_models || [];
+                          const embedMs = prov?.embedding_models || [];
+                          if (chatMs.length) setNewChatModel(chatMs[0].id);
+                          // Giữ embedding model cũ nếu provider mới không có embedding
+                          if (embedMs.length) setNewEmbedModel(embedMs[0].id);
+                        }}>
                           {Object.entries(config.providers).map(([k, v]: any) => <option key={k} value={k}>{v.name}</option>)}
                         </select>
+                        {config.providers[newProvider]?.base_url && (
+                          <p className="text-xs text-[#8890a4] mt-1">
+                            🔗 Base URL: <code className="text-[#6c63ff]">{config.providers[newProvider].base_url}</code>
+                          </p>
+                        )}
                       </div>
                       <div>
-                        <label className="text-xs text-[#8890a4] mb-1 block">Chat Model</label>
+                        <label className="text-xs text-[#8890a4] mb-1 block">Chat / RAG Model</label>
                         <select className="input" value={newChatModel} onChange={e => setNewChatModel(e.target.value)}>
                           {(config.providers[newProvider]?.chat_models || []).map((m: any) => (
-                            <option key={m.id} value={m.id}>{m.name} — ${m.input_price}/${m.output_price} / 1M tokens</option>
+                            <option key={m.id} value={m.id}>
+                              {m.name} {m.input_price === 0 && m.output_price === 0 ? '— Miễn phí' : `— $${m.input_price}/$${m.output_price} / 1M tokens`}
+                            </option>
                           ))}
                         </select>
                       </div>
                       <div>
                         <label className="text-xs text-[#8890a4] mb-1 block">Embedding Model</label>
-                        <select className="input" value={newEmbedModel} onChange={e => setNewEmbedModel(e.target.value)}>
-                          {(config.providers[newProvider]?.embedding_models || []).map((m: any) => (
-                            <option key={m.id} value={m.id}>{m.name}</option>
-                          ))}
-                        </select>
+                        {(config.providers[newProvider]?.embedding_models || []).length > 0 ? (
+                          <select className="input" value={newEmbedModel} onChange={e => setNewEmbedModel(e.target.value)}>
+                            {(config.providers[newProvider]?.embedding_models || []).map((m: any) => (
+                              <option key={m.id} value={m.id}>{m.name}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <div className="input bg-[#1a1d27] text-[#8890a4] cursor-not-allowed">
+                            {newEmbedModel || 'text-embedding-3-small'} <span className="text-xs">(sử dụng embedding từ OpenAI)</span>
+                          </div>
+                        )}
                       </div>
                       {configMsg && <p className="text-sm">{configMsg}</p>}
                       <button onClick={saveConfig} disabled={configSaving} className="btn-primary">
