@@ -136,7 +136,7 @@
 - Phase 3.1 đã hoàn thành: monitoring backend đầy đủ + error tracking + dashboard UI admin
 
 ### Đang ở mức một phần
-- OCR song song hoàn chỉnh và confidence scoring đầy đủ
+- OCR song song hoàn chỉnh và confidence scoring đầy đủ → Đã lên kế hoạch nâng cấp: [OCR_Upgrade_Plan.md](./OCR_Upgrade_Plan.md)
 - Hỗ trợ file rất lớn theo kiểu streaming end-to-end
 - Worker process model tách khỏi FastAPI hoàn toàn
 - Performance regression benchmark đúng nghĩa
@@ -144,6 +144,7 @@
 ### Chưa bắt đầu đáng kể
 - Phase 3.2 Auto-scaling Infrastructure
 - Phase 3.3 Advanced Caching
+- **Nâng cấp OCR**: PaddleOCR + VietOCR 2 tầng (thay Tesseract) → [OCR_Upgrade_Plan.md](./OCR_Upgrade_Plan.md)
 
 ---
 
