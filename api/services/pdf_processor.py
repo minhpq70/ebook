@@ -12,12 +12,12 @@ import logging
 from dataclasses import dataclass
 from pypdf import PdfReader
 import fitz
-import pytesseract
 from PIL import Image
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import tiktoken
 
 from core.config import settings
+from services.ocr_engine import ocr_page_image
 
 logger = logging.getLogger("ebook.pdf")
 
@@ -95,52 +95,31 @@ def is_valid_vietnamese_text(text: str) -> bool:
 def extract_pages_from_pdf(pdf_bytes: bytes) -> list[dict]:
     """
     Trích xuất text từng trang của PDF bằng PyMuPDF (fitz).
-    Nếu trang bị lỗi encoding, tự động chuyển sang OCR (Tesseract).
+    Nếu trang bị lỗi encoding, tự động chuyển sang OCR (PaddleOCR + VietOCR).
     Returns: [{'page_number': int, 'text': str}, ...]
     """
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     pages = []
 
-    async def process_page_async(page_num: int):
-        """Process single page with optimized OCR"""
-        page = doc[page_num]
-        # Thử trích xuất text thông thường
-        raw_text = page.get_text() or ""
-
-        # Đánh giá encoding với optimized logic
-        if is_valid_vietnamese_text_optimized(raw_text):
-            return _clean_text(raw_text)
-
-        # OCR với resolution thấp hơn (200 DPI) + crop margins để tăng tốc
-        # Crop 5% margins để loại bỏ phần không cần thiết
-        rect = page.rect
-        margin = 0.05
-        crop_rect = fitz.Rect(
-            rect.x0 + rect.width * margin,
-            rect.y0 + rect.height * margin,
-            rect.x1 - rect.width * margin,
-            rect.y1 - rect.height * margin
-        )
-
-        try:
-            pix = page.get_pixmap(dpi=200, clip=crop_rect)
-            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            # OCR với timeout 30 giây
-            ocr_text = pytesseract.image_to_string(img, lang="vie", timeout=30)
-            return _clean_text(ocr_text)
-        except Exception as e:
-            logger.warning("OCR failed for page %d: %s", page_num + 1, e)
-            # Fallback to original text if OCR fails
-            return _clean_text(raw_text)
-
     for i in range(len(doc)):
         try:
-            text = asyncio.run(process_page_async(i))
+            page = doc[i]
+            raw_text = page.get_text() or ""
+
+            if is_valid_vietnamese_text_optimized(raw_text):
+                text = _clean_text(raw_text)
+            else:
+                # OCR: render trang thành ảnh → chạy qua ocr_engine
+                try:
+                    pix = page.get_pixmap(dpi=200)
+                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                    text = _clean_text(ocr_page_image(img))
+                except Exception as e:
+                    logger.warning("OCR failed for page %d: %s", i + 1, e)
+                    text = _clean_text(raw_text)
+
             if text:
-                pages.append({
-                    "page_number": i + 1,
-                    "text": text
-                })
+                pages.append({"page_number": i + 1, "text": text})
         except Exception as e:
             logger.error("Error processing page %d: %s", i + 1, e)
 
@@ -161,6 +140,7 @@ def iter_pdf_page_batches(pdf_bytes: bytes, batch_size: int | None = None):
     """
     Yield các batch trang đã extract text để ingestion có thể xử lý streaming.
     Mỗi batch có dạng list[{"page_number": int, "text": str}].
+    OCR engine: PaddleOCR + VietOCR (fallback Tesseract nếu thiếu deps).
     """
     effective_batch_size = max(1, batch_size or settings.pdf_page_batch_size)
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -174,18 +154,11 @@ def iter_pdf_page_batches(pdf_bytes: bytes, batch_size: int | None = None):
             if is_valid_vietnamese_text_optimized(raw_text):
                 text = _clean_text(raw_text)
             else:
-                rect = page.rect
-                margin = 0.05
-                crop_rect = fitz.Rect(
-                    rect.x0 + rect.width * margin,
-                    rect.y0 + rect.height * margin,
-                    rect.x1 - rect.width * margin,
-                    rect.y1 - rect.height * margin
-                )
+                # OCR: render trang → PaddleOCR + VietOCR
                 try:
-                    pix = page.get_pixmap(dpi=200, clip=crop_rect)
+                    pix = page.get_pixmap(dpi=200)
                     img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                    text = _clean_text(pytesseract.image_to_string(img, lang="vie", timeout=30))
+                    text = _clean_text(ocr_page_image(img))
                 except Exception as e:
                     logger.warning("OCR failed for page %d: %s", page_index + 1, e)
                     text = _clean_text(raw_text)

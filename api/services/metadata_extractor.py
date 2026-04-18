@@ -3,17 +3,17 @@ import io
 import json
 import logging
 import fitz  # PyMuPDF
-import pytesseract
 from PIL import Image
 from core.openai_client import get_openai, get_chat_openai
 from core.config import settings
 from .pdf_processor import is_valid_vietnamese_text
+from .ocr_engine import ocr_page_image
 import re
 import asyncio
 
 logger = logging.getLogger("ebook.metadata")
 def extract_early_text(pdf_bytes: bytes, max_pages: int = 5) -> str:
-    """Trích xuất text từ n trang đầu tiên bằng PyMuPDF, kèm OCR fallback."""
+    """Trích xuất text từ n trang đầu tiên bằng PyMuPDF, kèm OCR fallback (PaddleOCR + VietOCR)."""
     try:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         text = ""
@@ -24,11 +24,11 @@ def extract_early_text(pdf_bytes: bytes, max_pages: int = 5) -> str:
                 try:
                     pix = doc[i].get_pixmap(dpi=300)
                     img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                    ocr_text = pytesseract.image_to_string(img, lang="vie")
+                    ocr_text = ocr_page_image(img)
                     if len(ocr_text.strip()) > len(page_text.strip()):
                         page_text = ocr_text
                 except Exception as e:
-                    logger.warning(f"Lỗi OCR trang {i} (Tesseract chưa cài đặt hoặc thiếu model vie): {e}")
+                    logger.warning(f"Lỗi OCR trang {i}: {e}")
             if page_text:
                 text += page_text + "\n\n"
         doc.close()
@@ -94,7 +94,7 @@ def extract_toc(pdf_bytes: bytes) -> str | None:
                 try:
                     pix = doc[p].get_pixmap(dpi=300)
                     img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                    ocr_text = pytesseract.image_to_string(img, lang="vie")
+                    ocr_text = ocr_page_image(img)
                     if len(ocr_text.strip()) > len(text.strip()):
                         text = ocr_text
                 except Exception:
