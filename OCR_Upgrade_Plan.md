@@ -70,4 +70,6 @@ vietocr==0.3.5         # VietOCR recognition (~50MB + pretrained weights)
 
 ## Trạng Thái
 
-- [ ] Chưa triển khai — đang ở giai đoạn lên kế hoạch
+- [x] Code đã triển khai: `services/ocr_engine.py`, cập nhật `pdf_processor.py` và `metadata_extractor.py`
+- [x] Dependencies: `paddlepaddle`, `paddleocr`, `torch`, `vietocr` trong `requirements.txt`
+- [x] Graceful fallback: PaddleOCR → VietOCR → Tesseract (hệ thống không crash nếu thiếu package)
