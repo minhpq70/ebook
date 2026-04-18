@@ -5,13 +5,21 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # OpenAI
+    # ── Provider: OpenAI ──
     openai_api_key: str
     openai_embedding_model: str = "text-embedding-3-small"
     openai_chat_model: str = "gpt-4o-mini"
     openai_max_tokens: int = 4000
 
-    # Local LLM (Tuỳ chọn cho Qwen, Gemma)
+    # ── Provider: Google AI Studio (Gemma / Gemini) ──
+    google_ai_studio_api_key: str = ""
+    google_ai_studio_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
+    # ── Provider: Anthropic ──
+    anthropic_api_key: str = ""
+    anthropic_base_url: str = ""
+
+    # Legacy aliases (backward compat với .env cũ)
     openai_chat_base_url: str | None = None
     openai_chat_api_key: str | None = None
 

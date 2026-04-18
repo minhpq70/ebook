@@ -9,7 +9,7 @@ import { useRouter } from 'next/navigation';
 type Tab = 'books' | 'logs' | 'config';
 
 interface LogEntry { timestamp: string; mode?: string; book?: string; type?: string; tokens?: string; cost?: string; q?: string; }
-interface AIConfig { current: { provider: string; chat_model: string; embedding_provider: string; embedding_model: string }; providers: Record<string, any>; embedding_providers: Record<string, any>; }
+interface AIConfig { current: { provider: string; chat_model: string; embedding_provider: string; embedding_model: string }; providers: Record<string, any>; embedding_providers: Record<string, any>; available: Record<string, boolean>; }
 
 export default function AdminPage() {
   const router = useRouter();
@@ -322,7 +322,11 @@ export default function AdminPage() {
                           const chatMs = config.providers[e.target.value]?.chat_models || [];
                           if (chatMs.length) setNewChatModel(chatMs[0].id);
                         }}>
-                          {Object.entries(config.providers).map(([k, v]: any) => <option key={k} value={k}>{v.name}</option>)}
+                          {Object.entries(config.providers).map(([k, v]: any) => (
+                            <option key={k} value={k} disabled={!config.available?.[k]}>
+                              {v.name} {config.available?.[k] ? '✅' : '⚠️ Chưa có API Key'}
+                            </option>
+                          ))}
                         </select>
                         {config.providers[newProvider]?.base_url && (
                           <p className="text-xs text-[#8890a4] mt-1">
@@ -352,7 +356,11 @@ export default function AdminPage() {
                           const embedMs = config.embedding_providers?.[e.target.value]?.embedding_models || [];
                           if (embedMs.length) setNewEmbedModel(embedMs[0].id);
                         }}>
-                          {Object.entries(config.embedding_providers || {}).map(([k, v]: any) => <option key={k} value={k}>{v.name}</option>)}
+                          {Object.entries(config.embedding_providers || {}).map(([k, v]: any) => (
+                            <option key={k} value={k} disabled={!config.available?.[k]}>
+                              {v.name} {config.available?.[k] ? '✅' : '⚠️ Chưa có API Key'}
+                            </option>
+                          ))}
                         </select>
                       </div>
                       <div>

@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from core.auth import require_admin
 from core.supabase_client import get_supabase
+from core.openai_client import get_available_providers
 from services.ai_config_service import (
     AI_PROVIDERS, get_ai_config, update_ai_config, get_embedding_providers
 )
@@ -44,11 +45,12 @@ class UpdateBookMetaRequest(BaseModel):
 
 @router.get("/config")
 def get_config(_: dict = Depends(require_admin)):
-    """Lấy cấu hình AI hiện tại và toàn bộ danh sách provider/model."""
+    """Lấy cấu hình AI hiện tại, danh sách providers, và trạng thái API key."""
     return {
         "current": get_ai_config(),
         "providers": AI_PROVIDERS,
         "embedding_providers": get_embedding_providers(),
+        "available": get_available_providers(),
     }
 
 
