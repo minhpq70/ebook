@@ -1,135 +1,184 @@
 # Hướng Dẫn Setup Server Hoàn Chỉnh (Self-Hosted Supabase)
 
-Tài liệu này cung cấp cho bạn một lộ trình chi tiết Step-by-Step để chuyển Ebook Platform từ Vercel/Render sang một máy chủ VPS vật lý độc lập (Ubuntu 22.04 LTS / 24.04 LTS).
+Tài liệu chi tiết Step-by-Step để chuyển Ebook Platform từ Vercel/Render sang máy chủ VPS vật lý độc lập (Ubuntu 22.04 LTS / 24.04 LTS).
 
-Theo phương án này, **Không cần phải code lại bất cứ dòng nào**, chúng ta sẽ tự xây dựng một "Supabase thu nhỏ" ngay trên server bằng Docker.
+**Không cần code lại bất cứ dòng nào** — chỉ cần cấu hình lại biến môi trường.
 
 ---
 
-## BƯỚC 0: Clone Mã Nguồn Từ GitHub Xuống Máy Chủ
-Vì máy chủ bạn vừa mua hoàn toàn trống trơn, việc đầu tiên là kéo toàn bộ mã nguồn (bao gồm cả file `setup_server.sh` mà tôi vừa viết cho bạn) về Server.
+## BƯỚC 0: Clone Mã Nguồn
 
 ```bash
-# Di chuyển vào thư mục chứa code thường dùng của Linux
 cd /var/www
-
-# Kéo dự án từ GitHub của bạn về (thay thế đường link repo bên dưới)
-git clone https://github.com/Taikhoancuaban/ebook-platform.git
-
-# Bay vào thư mục chứa code
+git clone https://github.com/minhpq70/ebook.git ebook-platform
 cd ebook-platform
 ```
 
 ---
 
-## BƯỚC 1: Chạy Script Cài Đặt Khung Cương Hệ Thống (Mới)
-Lúc này bạn đã đứng trong thư mục `ebook-platform`, file `setup_server.sh` đã có sẵn. File này sẽ tự động cài các phần mềm thiết yếu: *Docker, PostgreSQL client, Python 3.12, Node.js 20, PM2, Nginx, và đặc biệt là Tesseract OCR (Tiếng Việt) để AI nhận diện ảnh bìa.*
+## BƯỚC 1: Chạy Script Cài Đặt Hệ Thống
 
-**Thao tác gõ trên Terminal máy chủ:**
+File `setup_server.sh` sẽ tự động cài: Docker, Python 3.12, Node.js 20, PM2, Nginx, Redis, và các thư viện hệ thống cho PaddleOCR (libgl1, libglib2.0). Tesseract OCR được giữ lại làm fallback.
+
 ```bash
-# Cấp quyền thực thi và chạy
 chmod +x setup_server.sh
 ./setup_server.sh
 ```
 
+> [!NOTE]
+> Sau khi chạy xong, **đăng xuất và đăng nhập lại** để quyền Docker có hiệu lực:
+> ```bash
+> exit
+> # SSH lại vào server
+> ```
+
 ---
 
-## BƯỚC 2: Khởi Động Động Cơ Supabase (Docker)
-Máy chủ hiện tại đã có Docker. Bây giờ bạn cần mồi máy một bản Supabase Open-Source.
+## BƯỚC 2: Khởi Động Supabase Self-Hosted (Docker)
 
 ```bash
-# Clone bản gốc Supabase Self-Hosted từ kho chính chủ
 cd /opt
 sudo git clone --depth 1 https://github.com/supabase/supabase
 cd supabase/docker
 
-# Copy thiết lập môi trường mặc định
 sudo cp .env.example .env
-
-# Chạy hệ thống Supabase Database & Storage lên
 sudo docker compose pull
 sudo docker compose up -d
 ```
-> [!NOTE] 
-> Chạy xong lệnh trên, hệ sinh thái Supabase (Postgres, Storage, Kong API Gateway) sẽ tự động kích hoạt. Nó thường chiếm dụng cổng `8000` cho bộ định tuyến API (Kong). Do đó, Backend FastAPI của bạn sắp tới sẽ phải né cổng 8000 ra, ví dụ đổi sang cổng `8080`.
->  
-> - **SUPABASE_URL** của bạn bây giờ sẽ là: `http://127.0.0.1:8000`
-> - **SUPABASE_ANON_KEY** và **SERVICE_KEY**: Mở file `/opt/supabase/docker/.env` để lấy (Mục `ANON_KEY` và `SERVICE_ROLE_KEY`).
 
-Lưu ý: Mở Studio quản lý Database bằng cách vào trình duyệt `http://<IP_MAY_CHU>:8000` để thêm bảng, thêm cột thông qua UI như y hệt trên Supabas.com. Cần tạo 1 Bucket tên là `books` và 1 Bucket là `covers` ở phần Storage, và tạo bảng `books` với `book_chunks` dựa trên SQL script dự án.
+> [!NOTE]
+> Supabase (Postgres, Storage, Kong) sẽ chiếm cổng `8000`. Backend FastAPI sẽ chạy ở cổng `8080`.
+>
+> - **SUPABASE_URL**: `http://127.0.0.1:8000`
+> - **Keys**: Mở `/opt/supabase/docker/.env` để lấy `ANON_KEY` và `SERVICE_ROLE_KEY`
+>
+> Truy cập Studio: `http://<IP_MAY_CHU>:8000` → tạo Bucket `books` + `covers` ở Storage, chạy SQL schema từ `supabase/migrations/`.
 
 ---
 
-## BƯỚC 3: Triển Khai Backend (FastAPI) Qua PM2
-Backend Python yêu cầu môi trường độc lập khép kín. Không dùng Render, chúng ta nhờ `PM2` treo ngầm backend thay.
+## BƯỚC 3: Triển Khai Backend (FastAPI)
 
 ```bash
-# Điều hướng vào thư mục backend
 cd /var/www/ebook-platform/api
 
-# Cài đặt môi trường ảo Python 3.12
+# Tạo môi trường ảo Python 3.12
 python3.12 -m venv venv
 source venv/bin/activate
-pip install --no-cache-dir -r requirements.txt
 
-# Sắp xếp file .env (Điền key mới nhất của Supabase Local và OpenAI vào)
+# Cài dependencies (bao gồm PaddleOCR + VietOCR)
+pip install --no-cache-dir -r requirements.txt
+```
+
+> [!IMPORTANT]
+> `requirements.txt` đã bao gồm `paddlepaddle`, `paddleocr`, `torch`, `vietocr`.
+> PaddleOCR + VietOCR được cài qua pip, **không cần cài riêng binary** như Tesseract.
+> Thời gian cài lần đầu: ~10-15 phút (PyTorch ~200MB, PaddlePaddle ~200MB).
+
+### Cấu hình .env
+
+```bash
 cat <<EOF > .env
+# ── OpenAI (Embedding) ──
 OPENAI_API_KEY=sk-xxxx...
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_MAX_TOKENS=2000
+
+# ── Provider: Google AI Studio (Chat/RAG mặc định) ──
+GOOGLE_AI_STUDIO_API_KEY=AIzaSy...
+GOOGLE_AI_STUDIO_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+
+# ── Provider: Anthropic (tùy chọn) ──
+ANTHROPIC_API_KEY=
+ANTHROPIC_BASE_URL=
+
+# ── Legacy aliases (backward compat) ──
+OPENAI_CHAT_MODEL=gemma-4-31b-it
+OPENAI_CHAT_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+OPENAI_CHAT_API_KEY=AIzaSy...
+
+# ── Supabase (thay bằng key từ bước 2) ──
 SUPABASE_URL=http://127.0.0.1:8000
 SUPABASE_SERVICE_KEY=<SERVICE_ROLE_KEY_TỪ_BƯỚC_2>
-JWT_SECRET=Hãy_gõ_1_chuỗi_rất_dài_hơn_32_ký_tự_vào_đây
-EOF
+SUPABASE_ANON_KEY=<ANON_KEY_TỪ_BƯỚC_2>
 
-# Chạy ngầm vô thời hạn bằng lệnh PM2 System, treo ở cổng 8080 
+# ── RAG Config ──
+RAG_CHUNK_SIZE=500
+RAG_CHUNK_OVERLAP=50
+RAG_TOP_K=5
+RAG_VECTOR_WEIGHT=0.7
+RAG_FTS_WEIGHT=0.3
+
+# ── Auth ──
+JWT_SECRET=<CHUỖI_NGẪU_NHIÊN_ÍT_NHẤT_32_KÝ_TỰ>
+
+# ── App ──
+APP_ENV=production
+APP_CORS_ORIGINS=https://your-domain.com
+
+# ── Google Sheets Logging (tùy chọn) ──
+GOOGLE_SA_JSON=
+SHEET_ID=
+SHEET_TAB=Logs
+
+# ── Redis & Worker ──
+REDIS_ENABLED=true
+REDIS_URL=redis://127.0.0.1:6379/0
+INGESTION_WORKER_ENABLED=true
+EOF
+```
+
+### Khởi chạy Backend với PM2
+
+```bash
 pm2 start "venv/bin/uvicorn main:app --host 127.0.0.1 --port 8080" --name "ebook-api"
 ```
 
 ---
 
 ## BƯỚC 4: Triển Khai Frontend (Next.js)
-Tương tự Frontend sẽ được dựng mã bằng Node.js và treo bằng PM2.
 
 ```bash
-# Mở thư mục frontend
 cd /var/www/ebook-platform/web
 
-# Tạo trỏ url tới Backend (Cổng 8080 vừa cấu hình)
 cat <<EOF > .env.local
 NEXT_PUBLIC_API_URL=http://localhost:8080/api/v1
 EOF
 
-# Build Web chuẩn hóa
 npm install
 npm run build
 
-# PM2 treo Web lên cổng máy khách là 3000
 pm2 start npm --name "ebook-web" -- start -- -p 3000
 ```
-*(Đến lúc này: Backend đang chạy ở 8080, Frontend đang chạy ở 3000, Supabase ở 8000)*
+
+*(Backend: 8080, Frontend: 3000, Supabase: 8000)*
 
 ---
 
-## BƯỚC 5: Mở "Siêu Cửa Thuế" Nginx Và Cắm Domain Ra Ngoài Internet
-Hiện tại, server vật lý này phải điều tiết đường đi giữa 2 mảnh ghép (Port 3000 và 8080) thông qua tên miền `vidu-ebook.com`.
+## BƯỚC 5: Cấu Hình Nginx + Domain
 
 ```bash
 sudo nano /etc/nginx/sites-available/ebook
 ```
-Paste nội dung dưới đây vào:
+
+Paste nội dung:
 
 ```nginx
 server {
     listen 80;
-    server_name vidu-ebook.com;
+    server_name your-domain.com;
 
-    # Nửa 1: Request nào gọi vào API thì Nginx lái thẳng vào Backend Python (Port 8080)
+    client_max_body_size 200M;   # Cho phép upload PDF lớn
+
+    # API Backend
     location /api/ {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 600s;   # OCR/Ingestion có thể chạy lâu
         proxy_pass http://127.0.0.1:8080/api/;
     }
 
-    # Nửa 2: Tất cả những request còn lại là truy cập tải Giao diện Web (Port 3000)
+    # Frontend
     location / {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header Host $http_host;
@@ -138,44 +187,97 @@ server {
 }
 ```
 
-**Bật công tắc luồng mạng Nginx:**
+Kích hoạt:
+
 ```bash
 sudo ln -s /etc/nginx/sites-available/ebook /etc/nginx/sites-enabled/
-sudo nginx -t     # Kiểm tra lỗi cú pháp Nginx
-sudo systemctl reload nginx   # Áp dụng
-```
+sudo nginx -t
+sudo systemctl reload nginx
 
-**Hoàn tất và lưu trữ vòng đời:**
-```bash
-# Lệnh này giúp pm2 ghi nhớ lại frontend & backend để nếu sập nguồn server
-# bật lên tụi nó vẫn tự động đứng dậy chạy tiếp.
+# PM2 auto-restart khi reboot
 pm2 save
 pm2 startup
 ```
 
-> [!SUCCESS]
-> **THÀNH CÔNG RỰC RỠ**
-> Giờ đây bạn chỉ việc vào website `vidu-ebook.com`. Giao diện Frontend từ Nginx sẽ kết nối qua Backend. Backend sẽ xử lý OCR qua Tesseract ngay trên Ubuntu, bế file đẩy vào cái kho chứa Docker Local 100% On-Premise của chính bạn. Tất cả dữ liệu không ai có thể xâm phạm kể cả các dịch vụ thứ 3.
+> [!TIP]
+> **Cài SSL miễn phí:**
+> ```bash
+> sudo apt install certbot python3-certbot-nginx -y
+> sudo certbot --nginx -d your-domain.com
+> ```
 
 ---
 
-## BƯỚC 6: Di Dời Dữ Liệu Thực Tế Từ Supabase Cloud Về (Tuỳ Chọn)
-Nếu bạn có dữ liệu cũ đang nằm sẵn trên trang web Supabase.com và muốn vác toàn bộ cấu trúc CSDL lẫn File sách đang chứa ở trên đó đem về máy chủ Local mới tinh này mà **không bị sai lệch bất cứ thông tin/mã hóa Vector nào cả**, quy trình rất đơn giản:
+## BƯỚC 6: Xác Nhận OCR Engine
 
-### Di chuyển Database (Bảng dữ liệu & Vector RAG)
-Vì lõi gốc của cả Cloud và Local đều là PostgreSQL 100%, ta sẽ dùng công cụ Backup kinh điển `pg_dump`:
-1. **Lấy URI:** Trên Website của Supabase > Database > Settings > Lấy chuỗi *URI Connection*.
-2. **Rút toàn bộ dữ liệu (Export):** Từ Terminal máy chủ Ubuntu của bạn, gõ:
-   ```bash
-   pg_dump "postgres://[user]:[password]@[host]:6543/postgres" -C -f supabase_backup.sql
-   ```
-3. **Bơm dữ liệu (Import):** Tiếp tục tiêm cái file Backup cục mịch đó vào thẳng container Supabase Docker Local hiện tại qua port 5432:
-   ```bash
-   psql -h 127.0.0.1 -p 5432 -U postgres -d postgres -f supabase_backup.sql
-   ```
+Sau khi deploy, kiểm tra OCR đã hoạt động:
 
-### Di chuyển File Dung Lượng Lớn (PDF sách / Ảnh bìa)
-Bucket Storage tuân thủ giao thức AWS S3 nên đường dẫn File trên Cloud và Local lưu hệt nhau.
-1. Bạn có thể dùng tiện ích `Rclone` của Linux để Tải hàng loạt, hoặc thủ công vào Dashboard Storage của tài khoản cũ tải Zip xuống theo từng Folder.
-2. Truy cập vào giao diện web Studio quản lý của Supabase máy chủ Local mới (Ví dụ vào: `http://[IP_MAY_CHU]:8000`).
-3. Tạo 2 Bucket trống là `books` và `covers` (nhớ chỉnh public giống hệt ban đầu). Sau đó kéo thả/upload file ngược lại tương ứng theo thư mục. Các File này sẽ tự động liên kết nối lại khớp 100% với cái Database mà Bước trên bạn chèn vào mạng lưới. Rủi ro hỏng nền là 0%.
+```bash
+cd /var/www/ebook-platform/api
+source venv/bin/activate
+python3 -c "
+from services.ocr_engine import is_ocr_available
+status = is_ocr_available()
+print('OCR Status:')
+for engine, ok in status.items():
+    print(f'  {engine}: {\"✅\" if ok else \"❌\"} ')
+"
+```
+
+Kết quả mong đợi:
+```
+OCR Status:
+  paddleocr: ✅
+  vietocr: ✅
+  tesseract: ✅
+```
+
+> [!NOTE]
+> **Pipeline OCR 2 tầng:**
+> - **Tầng 1**: PaddleOCR (detection + recognition) — nhanh, ~85-90% chính xác
+> - **Tầng 2**: VietOCR fallback cho dòng có confidence < 0.85 — ~92-97% chính xác cho tiếng Việt
+> - **Tầng 3**: Tesseract fallback cuối cùng nếu PaddleOCR không khả dụng
+> - PDF text-based: **bỏ qua OCR hoàn toàn** → không tốn resource
+
+---
+
+## BƯỚC 7: Di Dời Dữ Liệu Từ Supabase Cloud (Tùy Chọn)
+
+Nếu có dữ liệu cũ trên Supabase Cloud muốn chuyển về:
+
+### Database (Bảng + Vectors)
+
+```bash
+# Export từ Cloud
+pg_dump "postgres://[user]:[password]@[host]:6543/postgres" -C -f supabase_backup.sql
+
+# Import vào Local Docker
+psql -h 127.0.0.1 -p 5432 -U postgres -d postgres -f supabase_backup.sql
+```
+
+### File Storage (PDF + Ảnh bìa)
+
+1. Tải từ Dashboard Storage của Supabase Cloud (hoặc dùng `rclone`)
+2. Truy cập Studio Local: `http://<IP>:8000`
+3. Tạo Bucket `books` + `covers` → upload file tương ứng
+
+---
+
+## Tóm Tắt Kiến Trúc
+
+```
+Internet → Nginx (:80/443)
+              ├─ /api/*  → FastAPI (:8080)
+              │              ├─ OCR: PaddleOCR + VietOCR (pip)
+              │              ├─ Embedding: OpenAI API
+              │              ├─ Chat/RAG: Google AI Studio (Gemma 4)
+              │              └─ Cache: Redis (:6379)
+              │
+              └─ /*      → Next.js (:3000)
+                              └─ Static frontend
+
+Supabase Docker (:8000)
+  ├─ PostgreSQL + pgvector (vector search)
+  ├─ Storage (PDF + Cover images)
+  └─ Kong API Gateway
+```
