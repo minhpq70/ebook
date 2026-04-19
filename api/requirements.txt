@@ -87,11 +87,9 @@ uvloop==0.22.1
 watchfiles==1.1.1
 websockets==12.0
 
-# OCR Engine (PaddleOCR + VietOCR)
-paddlepaddle>=3.0.0
-paddleocr>=3.4.0
-torch>=2.2.0
-vietocr>=0.3.5
+# OCR nâng cao (PaddleOCR + VietOCR) — cài riêng trên VPS:
+#   pip install -r requirements-ocr.txt
+# Không cần trên Render free — hệ thống tự fallback Tesseract
 
 # Testing
 pytest>=8.0

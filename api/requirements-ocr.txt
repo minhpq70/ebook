@@ -1,0 +1,10 @@
+# OCR Engine nâng cao — Chỉ cần trên VPS / self-hosted
+# Cài: pip install -r requirements-ocr.txt
+#
+# Pipeline: PaddleOCR (detection+recognition) + VietOCR (fallback cho dấu Việt)
+# Không cài → hệ thống tự dùng Tesseract fallback
+
+paddlepaddle>=3.0.0
+paddleocr>=3.4.0
+torch>=2.2.0
+vietocr>=0.3.5
