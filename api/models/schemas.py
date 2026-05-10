@@ -83,7 +83,8 @@ class TaskType(str, Enum):
 class RAGQueryRequest(BaseModel):
     book_id: str
     query: str
-    task_type: str = "qa"  # qa | explain | summarize_chapter | summarize_book | suggest
+    task_type: str = "qa"  # qa | explain | summarize_chapter | summarize_book | suggest | auto
+    source: Optional[str] = None         # hệ thống nguồn (libol, stbook...)
     chapter_hint: Optional[str] = None   # gợi ý chương (tùy chọn)
     top_k: Optional[int] = None          # override số chunks
 

@@ -40,6 +40,11 @@ def _get_provider_credentials(provider: str) -> dict:
             "api_key": settings.anthropic_api_key or "",
             "base_url": settings.anthropic_base_url or None,
         },
+        "local_proxy": {
+            "api_key": settings.openai_chat_api_key or "",
+            "base_url": settings.openai_chat_base_url,
+            "custom_headers": {"x-api-key": settings.openai_chat_api_key or ""}
+        },
     }
     return mapping.get(provider, mapping["openai"])
 
@@ -64,7 +69,7 @@ _chat_clients: dict[str, AsyncOpenAI] = {}
 _embed_clients: dict[str, AsyncOpenAI] = {}
 
 
-def _make_client(api_key: str, base_url: str | None, timeout: float = 120.0) -> AsyncOpenAI:
+def _make_client(api_key: str, base_url: str | None, timeout: float = 120.0, custom_headers: dict | None = None) -> AsyncOpenAI:
     """Tạo AsyncOpenAI client với connection pooling."""
     kwargs: dict = {
         "api_key": api_key or "sk-placeholder",
@@ -76,6 +81,8 @@ def _make_client(api_key: str, base_url: str | None, timeout: float = 120.0) -> 
     }
     if base_url:
         kwargs["base_url"] = base_url
+    if custom_headers:
+        kwargs["default_headers"] = custom_headers
     return AsyncOpenAI(**kwargs)
 
 
@@ -96,6 +103,7 @@ def get_chat_openai(provider: str | None = None) -> AsyncOpenAI:
             api_key=creds["api_key"],
             base_url=creds["base_url"],
             timeout=120.0,
+            custom_headers=creds.get("custom_headers")
         )
     return _chat_clients[provider]
 
@@ -121,8 +129,10 @@ def get_openai(provider: str | None = None) -> AsyncOpenAI:
 def _detect_chat_provider() -> str:
     """
     Phát hiện chat provider từ env vars hiện tại.
-    Ưu tiên: google_ai_studio (nếu có key) → openai.
+    Ưu tiên: local_proxy (nếu base_url là IP LAN) → google_ai_studio → openai.
     """
+    if settings.openai_chat_base_url and "192.168" in settings.openai_chat_base_url:
+        return "local_proxy"
     if settings.google_ai_studio_api_key or settings.openai_chat_api_key:
         return "google_ai_studio"
     return "openai"

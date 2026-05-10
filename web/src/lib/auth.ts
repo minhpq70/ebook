@@ -142,6 +142,7 @@ interface AIProvider {
 interface AIConfig {
   provider: string;
   chat_model: string;
+  embedding_provider: string;
   embedding_model: string;
   updated_at?: string;
 }
@@ -149,6 +150,8 @@ interface AIConfig {
 interface AIConfigResponse {
   current: AIConfig;
   providers: Record<string, AIProvider>;
+  embedding_providers: Record<string, any>;
+  available: Record<string, boolean>;
 }
 
 interface LogEntry {

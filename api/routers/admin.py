@@ -56,11 +56,20 @@ def get_config(_: dict = Depends(require_admin)):
 
 @router.put("/config")
 def put_config(req: UpdateConfigRequest, _: dict = Depends(require_admin)):
-    """Cập nhật provider + model. Hệ thống sẽ dùng model mới cho request tiếp theo."""
+    """Cập nhật provider + model. Ghi vào .env và restart để áp dụng."""
     if req.provider not in AI_PROVIDERS:
         raise HTTPException(status_code=400, detail=f"Provider không hợp lệ: {req.provider}")
     updated = update_ai_config(req.provider, req.chat_model, req.embedding_provider, req.embedding_model)
-    return {"message": "Cập nhật cấu hình thành công", "config": updated}
+    
+    # Restart API để reload settings từ .env mới
+    import subprocess
+    try:
+        subprocess.Popen(["pm2", "restart", "ebook-api", "--silent"], 
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass  # Nếu không có pm2, bỏ qua — admin phải restart thủ công
+    
+    return {"message": "Cập nhật cấu hình thành công. Server sẽ restart trong vài giây.", "config": updated}
 
 
 @router.get("/logs")

@@ -12,15 +12,15 @@ import re
 import asyncio
 
 logger = logging.getLogger("ebook.metadata")
-def extract_early_text(pdf_bytes: bytes, max_pages: int = 5) -> str:
-    """Trích xuất text từ n trang đầu tiên bằng PyMuPDF, kèm OCR fallback (PaddleOCR + VietOCR)."""
+def extract_early_text(pdf_bytes: bytes, max_pages: int = 5, use_ocr: bool = True) -> str:
+    """Trích xuất text từ n trang đầu tiên bằng PyMuPDF, kèm OCR fallback tùy chọn."""
     try:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         text = ""
         for i in range(min(max_pages, len(doc))):
             page_text = doc[i].get_text() or ""
             # Bắt buộc OCR nếu trang quá ít chữ (<50) vì có thể trang bìa là ảnh quét
-            if len(page_text.strip()) < 50 or not is_valid_vietnamese_text(page_text):
+            if use_ocr and (len(page_text.strip()) < 50 or not is_valid_vietnamese_text(page_text)):
                 try:
                     pix = doc[i].get_pixmap(dpi=300)
                     img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
@@ -127,7 +127,8 @@ async def generate_ai_summary(pdf_bytes: bytes) -> str | None:
     system_prompt = """Bạn là một biên tập viên xuất bản. 
 Dựa vào đoạn văn bản trích xuất từ phần đầu của một cuốn sách (có thể chứa mục lục, lời nói đầu, hoặc trang thông tin), 
 hãy viết một đoạn tóm tắt ngắn gọn, hấp dẫn về nội dung cuốn sách (khoảng 3-5 câu). 
-Nếu văn bản vô nghĩa hoặc không đủ dữ liệu, hãy trả về 'Không có đủ thông tin để tóm tắt.'"""
+Nếu văn bản vô nghĩa hoặc không đủ dữ liệu, hãy trả về 'Không có đủ thông tin để tóm tắt.'
+LƯU Ý QUAN TRỌNG: KHÔNG ĐƯỢC sinh ra các thẻ <thought> hay phân tích quá trình suy nghĩ của bạn. Hãy in ra trực tiếp đoạn tóm tắt cuối cùng."""
 
     client = get_chat_openai()
     try:
@@ -138,9 +139,12 @@ Nếu văn bản vô nghĩa hoặc không đủ dữ liệu, hãy trả về 'Kh
                 {"role": "user", "content": f"Trích xuất văn bản từ sách:\n\n{text[:8000]}"}
             ],
             temperature=0.3,
-            max_tokens=300
+            max_tokens=1000
         )
-        return response.choices[0].message.content.strip()
+        content = response.choices[0].message.content.strip()
+        import re
+        content = re.sub(r'<thought>.*?</thought>', '', content, flags=re.DOTALL).strip()
+        return content
     except Exception as e:
         logger.warning("Lỗi tạo AI summary: %s", e)
         return None
@@ -150,18 +154,22 @@ async def extract_metadata_from_pdf(pdf_bytes: bytes) -> dict:
     Trích xuất text trang bìa và gửi lên GPT để lấy metadata.
     Trả về dict: {"title": "", "author": "", "publisher": "", "published_year": ""}
     """
-    text = await asyncio.to_thread(extract_early_text, pdf_bytes, 3)
+    # Tắt OCR ở bước này vì đây là bước chạy đồng bộ trong API Upload,
+    # nếu chạy OCR (đặc biệt là lần đầu load model PaddleOCR) sẽ tốn rất nhiều thời gian gây ra 504 Timeout.
+    text = await asyncio.to_thread(extract_early_text, pdf_bytes, 3, False)
     if not text:
         return {}
 
     system_prompt = """Bạn là một thủ thư chuyên nghiệp.
 Nhiệm vụ của bạn là phân tích các trang đầu của cuốn sách và trích xuất thông tin xuất bản.
 Nếu không tìm thấy thông tin nào, hãy để giá trị là null.
-Trả về định dạng JSON nghiêm ngặt với các trường sau:
-- title: Tên sách (chính xác, bỏ các ký tự rác)
-- author: Tên tác giả
-- publisher: Nhà xuất bản
-- published_year: Năm xuất bản (chỉ lấy số năm, hoặc string nếu không rõ, ví dụ "2023" hoặc "Thập niên 90")"""
+
+BẮT BUỘC: Chỉ trả về DUY NHẤT một khối JSON hợp lệ, KHÔNG có text nào khác trước hoặc sau.
+KHÔNG viết giải thích, KHÔNG viết markdown, KHÔNG có ```json```.
+KHÔNG sử dụng thẻ <thought> hay bất kỳ suy luận nào.
+
+Định dạng JSON nghiêm ngặt:
+{"title": "Tên sách", "author": "Tên tác giả", "publisher": "Nhà xuất bản", "published_year": "Năm"}"""
 
     client = get_chat_openai()
     try:
@@ -171,16 +179,32 @@ Trả về định dạng JSON nghiêm ngặt với các trường sau:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Trích xuất thông tin từ đoạn văn bản sau:\n\n{text[:4000]}"}
             ],
-            response_format={"type": "json_object"},
-            temperature=0.1,
-            max_tokens=200
+            temperature=0.0,
+            max_tokens=300
         )
         
-        result_text = response.choices[0].message.content
-        if result_text:
-            data = json.loads(result_text)
+        result_text = response.choices[0].message.content or ""
+        result_text = result_text.strip()
+        
+        # Loại bỏ thinking tags nếu có (Gemma, Qwen)
+        result_text = re.sub(r'<thought>.*?</thought>', '', result_text, flags=re.DOTALL).strip()
+        
+        # Loại bỏ markdown code fences
+        result_text = re.sub(r'^```(?:json)?\s*', '', result_text)
+        result_text = re.sub(r'\s*```$', '', result_text)
+        
+        # Tìm JSON block bằng regex (phòng trường hợp AI thêm text thừa)
+        json_match = re.search(r'\{[^{}]*\}', result_text, re.DOTALL)
+        if json_match:
+            data = json.loads(json_match.group())
+            logger.info("AI metadata extracted: %s", data.get('title', '?'))
             return data
+        else:
+            logger.warning("Không tìm thấy JSON trong response AI metadata: %s", result_text[:200])
+    except json.JSONDecodeError as e:
+        logger.warning("Lỗi parse JSON metadata: %s — raw: %s", e, result_text[:200])
     except Exception as e:
         logger.warning("Lỗi gọi OpenAI metadata: %s", e)
         
     return {}
+

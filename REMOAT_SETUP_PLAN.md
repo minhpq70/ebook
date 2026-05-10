@@ -13,8 +13,8 @@ Tuy nhiên, dù dùng phần mềm nào, nguyên lý chọc vào lõi hệ thố
 
 ### 1. Vẫn BẮT BUỘC khởi động lại Antigravity để mở cổng kết nối
 Dù Remoat có xịn đến đâu, nó vẫn cần hệ thống Antigravity mở cổng nhà. Bạn bắt buộc phải tắt cửa sổ làm việc hiện tại, mở Terminal lên và gõ lại lệnh khởi động có đính kèm Chìa khóa Cổng như sau:
-`open -a /Applications/Antigravity.app --args --remote-debugging-port=9222`
-*(Điều này làm gián đoạn mọi mạch nói chuyện hiện tại, và chúng ta sẽ phải chào lại từ đầu).*
+`antigravity --remote-debugging-port=9222`
+*(Hoặc thêm cờ `--remote-debugging-port=9222` vào lệnh khởi động bạn thường dùng. Điều này làm gián đoạn mạch nói chuyện hiện tại, và chúng ta sẽ phải chào lại từ đầu).*
 
 ### 2. Cần tương tác với BotFather
 Sau khi làm bước 1 xong, bạn sẽ dùng điện thoại mở Telegram, tìm `@BotFather` để tạo một con bot mới và đưa Token cho tôi gán vào `Remoat`.
@@ -25,16 +25,16 @@ Kế hoạch này sẽ cài đặt và cấu hình phần mềm có sẵn:
 
 ### [NEW] Cài đặt `remoat` Toàn cầu
 - Sử dụng Node.js (vừa rà soát thấy máy bạn đã cài Node v22) để kéo bộ cài đặt:
-  `/usr/local/bin/npm install -g remoat`
+  `npm install -g remoat` (Hoặc nếu bị lỗi quyền, có thể chạy `npm install remoat` trong thư mục dự án và dùng `npx remoat`)
 
 ### [NEW] Cấu hình Token và Thư mục
 - Chạy lệnh khởi tạo của remoat:
   `remoat config --token "YOUR_TELEGRAM_BOT_TOKEN"`
 - Gắn quyền quản lý (bind) Remoat vào đúng vị trí dự án eBook hiện tại:
-  `remoat bind /Users/admin/.gemini/antigravity/scratch/ebook-platform`
+  `remoat bind /home/tinhvan/apps/ebook-platform`
 
 ### [NEW] Khởi chạy làm dịch vụ ngầm (Daemon)
-- Dùng công cụ `pm2` (mà bạn đã cài sẵn từ đợt chạy web Backend) để chuyển Remoat thành một bóng ma chạy ngầm vĩnh viễn trên máy Mac.
+- Dùng công cụ `pm2` (mà bạn đã cài sẵn từ đợt chạy web Backend) để chuyển Remoat thành một bóng ma chạy ngầm vĩnh viễn trên máy chủ VPS.
 
 ---
 
@@ -48,4 +48,4 @@ Kế hoạch này sẽ cài đặt và cấu hình phần mềm có sẵn:
 ## Verification Plan
 1. Telegram trên iPhone của bạn gửi lệnh `/status` tới con Bot của bạn.
 2. Remoat quét xem Antigravity có đang bật không và báo "Antigravity is connected (Port 9222)".
-3. Bạn ra lệnh "Review file README.md", Antigravity trên Mac sẽ tự chạy.
+3. Bạn ra lệnh "Review file README.md", Antigravity trên VPS sẽ tự chạy.

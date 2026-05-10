@@ -138,7 +138,7 @@ Tốc độ trả lời câu hỏi của AI **không bị ảnh hưởng** bởi
 
 | Giới hạn | Giá trị | Giải pháp nâng cấp |
 |----------|---------|-------------------|
-| Kích thước file PDF tối đa | ~100 MB | Nén PDF trước khi upload |
+| Kích thước file PDF tối đa | ~200 MB | Nén PDF trước khi upload |
 | Ngôn ngữ hỗ trợ | Tiếng Việt, Tiếng Anh | Bổ sung thêm ngôn ngữ khi cần |
 | Số người dùng đồng thời | ~50-100 (gói Free) | Nâng gói Render/Supabase |
 | Định dạng file | Chỉ PDF | Có thể mở rộng sang EPUB, DOCX |
@@ -155,27 +155,45 @@ Tốc độ trả lời câu hỏi của AI **không bị ảnh hưởng** bởi
                        │
                        ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                   FRONTEND (Vercel)                               │
-│              Next.js / React — Giao diện người dùng               │
+│                   FRONTEND (Next.js)                              │
+│              Giao diện người dùng — Upload, Chat, Quản lý        │
 └──────────────────────┬───────────────────────────────────────────┘
                        │ HTTPS API
                        ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                   BACKEND (Render.com)                            │
-│              FastAPI / Python — Xử lý logic nghiệp vụ            │
+│               BACKEND API (FastAPI — ebook-api)                   │
+│          Chỉ phục vụ HTTP — KHÔNG chạy ingestion worker          │
 │   ┌─────────────┐ ┌───────────────┐ ┌─────────────────────────┐  │
 │   │ Upload &    │ │ Tìm kiếm     │ │  Hỏi đáp AI            │  │
-│   │ Xử lý PDF  │ │ Vector       │ │  (RAG Engine)           │  │
+│   │ Queue Job   │ │ Vector       │ │  (RAG Engine)           │  │
 │   └─────────────┘ └───────────────┘ └─────────────────────────┘  │
 └──────────┬──────────────┬───────────────────┬────────────────────┘
            │              │                   │
-           ▼              ▼                   ▼
+           ▼              │                   ▼
+┌────────────────┐        │          ┌──────────────────┐
+│     Redis      │        │          │   Gemini / AI    │
+│  Queue + Cache │        │          │  Embedding + Chat│
+└───────┬────────┘        │          └──────────────────┘
+        │                 │
+        ▼                 ▼
 ┌────────────────┐ ┌──────────────┐  ┌──────────────────┐
-│   Supabase     │ │   Supabase   │  │   OpenAI API     │
-│   Storage      │ │   Database   │  │   (GPT-4o-mini)  │
-│ (Lưu PDF/Ảnh)  │ │ (pgvector)   │  │  Embedding + Chat│
-└────────────────┘ └──────────────┘  └──────────────────┘
+│  WORKER        │ │   Supabase   │  │   Supabase       │
+│ (ebook-worker) │ │   Database   │  │   Storage        │
+│  Process riêng │ │  (pgvector)  │  │  (PDF + Ảnh bìa) │
+│  OCR, Embed,   │ └──────────────┘  └──────────────────┘
+│  Chunk, AI     │
+└────────────────┘
 ```
+
+### Kiến trúc Process (PM2)
+
+| Process | Vai trò | Ghi chú |
+|---|---|---|
+| `ebook-api` | Phục vụ HTTP requests | Không chạy ingestion worker |
+| `ebook-worker` | Xử lý ingestion nền (OCR, embed, chunk) | Process riêng, event loop riêng |
+| `ebook-web` | Frontend Next.js | |
+
+> **Quan trọng:** Worker PHẢI chạy process riêng. Nếu chạy chung với API (`INGESTION_WORKER_ENABLED=true`), các tác vụ nặng (OCR, embedding) sẽ block event loop → gây lỗi 502/504 cho tất cả API requests.
 
 ### Công nghệ sử dụng
 
@@ -183,24 +201,146 @@ Tốc độ trả lời câu hỏi của AI **không bị ảnh hưởng** bởi
 |-----------|-----------|---------|
 | Giao diện | Next.js, React, TypeScript | Hiển thị danh sách sách, giao diện chat AI |
 | Backend | FastAPI, Python | Xử lý API, pipeline upload, RAG engine |
+| Worker | Python standalone (`worker.py`) | Ingestion nền: OCR, chunk, embed, AI summary |
 | Database | PostgreSQL + pgvector (Supabase) | Lưu trữ metadata, chunks, vector embedding |
+| Queue + Cache | Redis | Ingestion queue, embedding cache, progress tracking |
 | Lưu trữ file | Supabase Storage | Lưu file PDF gốc và ảnh bìa |
-| AI Models | OpenAI GPT-4o-mini + text-embedding-3-small | Hỏi đáp thông minh + tạo vector |
-| Hosting Frontend | Vercel | Deploy tự động từ GitHub |
-| Hosting Backend | Render.com | Deploy tự động từ GitHub |
+| AI Models | Gemini 2.5 Flash + text-embedding-3-small | Hỏi đáp thông minh + tạo vector |
 
 ---
 
 ## 7. Câu hỏi Thường gặp
 
 **Q: Tại sao upload sách mất vài phút?**  
-A: Phần lớn thời gian dành cho việc gọi OpenAI API để tạo vector embedding cho từng đoạn văn bản. Đây là bước không thể bỏ qua vì vector là nền tảng để AI tìm kiếm và trả lời chính xác. Quá trình này chạy tự động ở chế độ nền, người dùng không cần chờ đợi.
+A: Bản thân việc upload trả về **trong vài giây**. Phần nặng (OCR, tạo vector embedding, AI summary) chạy ngầm trong worker riêng. Trạng thái sách sẽ chuyển từ `queued` → `processing` → `ready`. Người dùng có thể tiếp tục sử dụng các tính năng khác trong khi chờ đợi.
+
+**Q: Tại sao bị lỗi 502/504 khi upload sách lớn?**  
+A: Nguyên nhân thường gặp: worker ingestion đang chạy **chung process** với API. Khi worker xử lý PDF nặng (OCR, embedding), nó block event loop → API không phản hồi được. **Giải pháp:** Đảm bảo `INGESTION_WORKER_ENABLED=false` trong `.env` và chạy `ebook-worker` là process riêng qua PM2.
 
 **Q: Sách càng nhiều thì hệ thống có chậm đi không?**  
 A: Không. Mỗi câu hỏi chỉ tìm kiếm trong phạm vi 1 cuốn sách, nên dù có hàng trăm cuốn sách khác trong hệ thống, tốc độ trả lời vẫn giữ nguyên 2-5 giây.
 
 **Q: Hệ thống có thể xử lý sách bằng tiếng nước ngoài không?**  
-A: Có. OpenAI hỗ trợ đa ngôn ngữ, bao gồm tiếng Anh, tiếng Trung, tiếng Nhật, v.v. Tuy nhiên, giao diện và prompt hiện tại được tối ưu cho tiếng Việt.
+A: Có. AI hỗ trợ đa ngôn ngữ, bao gồm tiếng Anh, tiếng Trung, tiếng Nhật, v.v. Tuy nhiên, giao diện và prompt hiện tại được tối ưu cho tiếng Việt.
 
 **Q: Dữ liệu có an toàn không?**  
 A: File PDF và dữ liệu được lưu trên Supabase (hạ tầng AWS), có mã hóa khi truyền tải (TLS) và khi lưu trữ (encryption at rest). API có xác thực JWT, chỉ Admin mới có quyền upload/xóa sách.
+
+---
+
+## 8. Troubleshooting — Lỗi 502/504 khi Upload
+
+### Triệu chứng
+- Upload file PDF lớn → trang poll status liên tục trả 502 Bad Gateway
+- Các tab quản trị khác cũng bị treo/lỗi trong khi upload đang chạy
+- Console trình duyệt hiển thị hàng loạt `GET /api/v1/books/{id} 502`
+
+### Nguyên nhân gốc
+Worker ingestion chạy **chung event loop** với API (cùng process). Khi worker xử lý OCR/embedding (CPU-bound, sync I/O), nó block toàn bộ event loop → API không thể phục vụ bất kỳ request nào.
+
+### Giải pháp (đã áp dụng — Tháng 4/2026)
+
+1. **Tắt worker trong API process:**
+   ```env
+   # api/.env
+   INGESTION_WORKER_ENABLED=false
+   ```
+
+2. **Chạy worker riêng qua PM2:**
+   ```bash
+   pm2 start "venv/bin/python worker.py" --name ebook-worker --cwd /path/to/api
+   ```
+
+3. **Kiến trúc mới:**
+   ```
+   ebook-api    → Chỉ phục vụ HTTP (upload trả về ngay, push job vào Redis queue)
+   ebook-worker → Process riêng, poll Redis, xử lý OCR/embed/chunk
+   ```
+
+4. **Kết quả:** Upload trả về trong ~5 giây, polling status không bị 502, API luôn responsive.
+
+---
+
+## 9. Cải tiến RAG Retrieval (Tháng 5/2026)
+
+### Vấn đề gốc
+
+| Vấn đề | Nguyên nhân | Ảnh hưởng |
+|---|---|---|
+| Tóm tắt phần thiếu nội dung | Hybrid search chỉ lấy 5-15 chunks ngẫu nhiên | Bỏ sót ~96% nội dung của phần (VD: Phần 1 có 386 chunks) |
+| Mục lục thiếu | Supabase giới hạn 1000 rows/query, trang MỤC LỤC ở cuối sách | Không lấy được chunks trang 1000+ |
+| Tiêu đề phần sai | LLM suy đoán từ chunk bị lỗi OCR nặng | Tiêu đề bị hallucinate |
+| Ghi chú OCR hiện ra | Prompt yêu cầu ghi `[nguyên văn]` khi không chắc chắn | Bạn đọc thấy nội dung kỹ thuật không liên quan |
+| Streaming đứng | Nginx buffer SSE response | Chat bị ngắt giữa chừng |
+
+### Giải pháp đã áp dụng
+
+#### 9.1 Section-Aware Retrieval (`retrieval.py`)
+
+Khi người dùng hỏi "tóm tắt phần 1" hoặc "tóm tắt chương III":
+
+```
+Detect section reference → Find page range → Distributed sampling
+   "phần 1" → 1         pages 12-151       25 chunks trải đều
+```
+
+- `detect_section_reference()`: Nhận diện "phần 1", "phần III", "chapter 2" trong query
+- `find_section_page_range()`: Scan chunks theo batch (để bypass giới hạn 1000 rows) tìm header "Phần I", "Phần II"...
+- `retrieve_chunks_for_section_summary()`: Chia đều toàn bộ chunks của phần thành 25 lát, lấy chunk dài nhất mỗi lát
+
+#### 9.2 TOC Detection từ trang in sẵn (`retrieval.py`)
+
+Khi người dùng hỏi mục lục:
+
+- Query 20 trang cuối sách (bypass giới hạn 1000 rows)
+- Tìm chunks chứa keyword "MỤC LỤC"
+- Lấy toàn bộ chunks trong phạm vi trang mục lục
+- Fallback: kiểm tra 20 trang đầu nếu không tìm thấy ở cuối
+
+#### 9.3 Prompt Engineering cải tiến (`rag_engine.py`)
+
+- Thầm lặng sửa lỗi OCR — KHÔNG BAO GIờ hiện ghi chú `[nguyên văn]`, `(đã sửa)`, `(tiêu đề được phục hồi từ...)`
+- Đoạn lỗi OCR nặng: Bỏ qua và dùng thông tin từ chunks khác
+- Tiêu đề chương/phần: Đối chiếu nhiều chunks để tìm tiêu đề chính xác
+- Tăng `max_tokens`: Tóm tắt chương/sách → 8000 tokens (thường: 4000)
+
+#### 9.4 Nginx SSE Streaming (`nginx-ebook.conf`)
+
+```nginx
+location /api/ {
+    proxy_buffering off;          # Tắt buffer cho SSE
+    proxy_cache off;
+    chunked_transfer_encoding on;
+    proxy_http_version 1.1;
+    proxy_set_header Connection '';
+}
+```
+
+#### 9.5 Keyword Supplement Search (`retrieval.py`)
+
+Hybrid search (vector + FTS) đôi khi miss chunks chứa **chính xác** cụm từ trong câu hỏi, vì embedding similarity ưu tiên chunks ở chỗ khác trong sách.
+
+**Giải pháp:** Bước bổ sung sau hybrid search:
+1. Trích cụm từ quan trọng từ câu hỏi (≥8 ký tự, bỏ stopwords)
+2. ILIKE search trong `book_chunks` tìm chunks chứa cụm đó
+3. De-duplicate với hybrid search results
+4. Ghép vào đầu kết quả (tối đa 5 chunks bổ sung)
+
+**Ví dụ:** Query "Những nội dung cơ bản của Hiến pháp năm 2013?" → hybrid search trả về trang 45, 397 (sai) → keyword supplement tìm được chunk trang 15 chứa chính xác tiêu đề mục đó.
+
+#### 9.6 Intro Page Context (`rag.py`)
+
+Trang Lời giới thiệu / Lời NXB (trang 1-10) chứa thông tin tiểu sử, bối cảnh quan trọng nhưng hybrid search thường bỏ qua do chunk ngắn, embedding similarity thấp.
+
+**Giải pháp:** Với mọi câu hỏi Q&A, tự động đính kèm chunks từ 10 trang đầu sách như context bổ sung (de-duplicate bằng chunk ID).
+
+#### 9.7 Book Metadata Detection (`rag_engine.py`, `rag.py`)
+
+Phát hiện câu hỏi về thông tin xuất bản/biên tập (biên tập viên, nhà in, tác giả, ISBN...) qua keyword matching → lấy trực tiếp chunks từ 10 trang đầu thay vì hybrid search.
+
+#### 9.8 Prompt Refinements (`rag_engine.py`)
+
+- Cấm mở đầu bằng "Dựa trên các đoạn trích được cung cấp" — trả lời trực tiếp vào nội dung
+- TOC format: heading markdown `###` cho tên phần, dấu gạch `-` cho mỗi mục, số trang cuối dòng
+- Tóm tắt chương: dùng MỤC LỤC làm khung cấu trúc, mỗi bài viết ≥1-2 câu tóm tắt
+- Cache key bao gồm `top_k` để tránh kết quả stale

@@ -1,11 +1,22 @@
 """
 AI Config Service
-- Load/save cấu hình provider + model từ bảng ai_config trong Supabase
+- Đọc cấu hình AI hiện tại trực tiếp từ settings (.env)
+- Cập nhật cấu hình bằng cách ghi vào file .env
 - Bảng giá model (cập nhật thủ công theo tháng)
 """
 from __future__ import annotations
 
-from core.supabase_client import get_supabase
+import re
+import logging
+from pathlib import Path
+
+from core.config import settings
+
+logger = logging.getLogger("ebook.ai_config")
+
+# Đường dẫn tới file .env
+_ENV_FILE = Path(__file__).parent.parent / ".env"
+
 
 # ── Danh sách Provider và Model ───────────────────────────────────────────────
 
@@ -92,25 +103,47 @@ def get_embedding_providers() -> dict:
     }
 
 
-# ── Supabase CRUD ─────────────────────────────────────────────────────────────
+def _detect_provider_from_env() -> str:
+    """Nhận diện provider đang dùng cho Chat dựa trên cấu hình .env."""
+    base_url = settings.openai_chat_base_url or ""
+    model = settings.openai_chat_model or ""
+
+    if "192.168" in base_url:
+        return "local_proxy"
+    if "gemini" in model.lower():
+        return "google"
+    if "gemma" in model.lower():
+        return "google_ai_studio"
+    if "generativelanguage.googleapis.com" in base_url:
+        return "google_ai_studio"
+    return "openai"
+
+
+# ── Đọc cấu hình AI từ .env (settings) ──────────────────────────────────────
 
 def get_ai_config() -> dict:
-    """Lấy cấu hình AI hiện tại từ Supabase."""
-    supabase = get_supabase()
-    result = supabase.table("ai_config").select("*").eq("id", 1).execute()
-    if result.data:
-        row = result.data[0]
-        # Backward compat: nếu chưa có embedding_provider thì dùng provider
-        if "embedding_provider" not in row or not row.get("embedding_provider"):
-            row["embedding_provider"] = "openai"
-        return row
-    # Fallback: khớp với cấu hình .env mặc định
+    """Lấy cấu hình AI hiện tại trực tiếp từ settings (.env)."""
+    provider = _detect_provider_from_env()
+    provider_info = AI_PROVIDERS.get(provider, AI_PROVIDERS["openai"])
+
     return {
-        "provider": "google_ai_studio",
-        "chat_model": "gemma-4-31b-it",
+        "provider": provider,
+        "provider_name": provider_info["name"],
+        "chat_model": settings.openai_chat_model,
         "embedding_provider": "openai",
-        "embedding_model": "text-embedding-3-small",
+        "embedding_model": settings.openai_embedding_model,
     }
+
+
+# ── Ghi cấu hình AI vào file .env ────────────────────────────────────────────
+
+def _update_env_var(content: str, key: str, value: str) -> str:
+    """Cập nhật hoặc thêm một biến môi trường trong nội dung .env."""
+    pattern = re.compile(rf'^{re.escape(key)}=.*$', re.MULTILINE)
+    if pattern.search(content):
+        return pattern.sub(f'{key}={value}', content)
+    else:
+        return content.rstrip() + f'\n{key}={value}\n'
 
 
 def update_ai_config(
@@ -119,24 +152,46 @@ def update_ai_config(
     embedding_provider: str,
     embedding_model: str,
 ) -> dict:
-    """Cập nhật cấu hình AI (Chat + Embedding tách riêng) và lưu vào Supabase."""
-    supabase = get_supabase()
-    result = supabase.table("ai_config").upsert({
-        "id": 1,
+    """Cập nhật cấu hình AI bằng cách ghi vào file .env."""
+    if not _ENV_FILE.exists():
+        raise FileNotFoundError(f"Không tìm thấy file .env tại {_ENV_FILE}")
+
+    provider_info = AI_PROVIDERS.get(provider, {})
+    base_url = provider_info.get("base_url", "")
+    api_key_env = provider_info.get("api_key_env", "OPENAI_CHAT_API_KEY")
+
+    # Đọc nội dung .env hiện tại
+    content = _ENV_FILE.read_text(encoding="utf-8")
+
+    # Cập nhật Chat model
+    content = _update_env_var(content, "OPENAI_CHAT_MODEL", chat_model)
+
+    # Cập nhật base URL nếu provider có
+    if base_url:
+        content = _update_env_var(content, "OPENAI_CHAT_BASE_URL", base_url)
+
+    # Cập nhật Embedding model
+    content = _update_env_var(content, "OPENAI_EMBEDDING_MODEL", embedding_model)
+
+    # Ghi file
+    _ENV_FILE.write_text(content, encoding="utf-8")
+    logger.info("Đã cập nhật .env: provider=%s, model=%s, embedding=%s",
+                provider, chat_model, embedding_model)
+
+    return {
         "provider": provider,
+        "provider_name": provider_info.get("name", provider),
         "chat_model": chat_model,
         "embedding_provider": embedding_provider,
         "embedding_model": embedding_model,
-        "updated_at": "now()",
-    }).execute()
-    return result.data[0]
+    }
 
 
 def get_current_chat_model() -> str:
     """Lấy tên model chat đang dùng."""
-    return get_ai_config().get("chat_model", "gpt-4o-mini")
+    return settings.openai_chat_model
 
 
 def get_current_embedding_model() -> str:
     """Lấy tên model embedding đang dùng."""
-    return get_ai_config().get("embedding_model", "text-embedding-3-small")
+    return settings.openai_embedding_model

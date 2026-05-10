@@ -40,7 +40,7 @@ export default function BookDetailPage() {
       const res = await fetch(`${API_BASE}/rag/query/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ book_id: id, query: q, task_type: 'qa' }),
+        body: JSON.stringify({ book_id: id, query: q, task_type: 'auto' }),
         credentials: 'include',
       });
       if (!res.ok) throw new Error('Lỗi AI');
@@ -49,14 +49,18 @@ export default function BookDetailPage() {
       setMessages(m => [...m, { role: 'assistant', content: '' }]);
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
+      let buffer = '';
+      let streamDone = false;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        const chunk = decoder.decode(value);
-        for (const line of chunk.split('\n')) {
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // giữ lại dòng chưa hoàn chỉnh
+        for (const line of lines) {
           if (!line.startsWith('data:')) continue;
           const data = line.slice(5).trim();
-          if (data === '[DONE]') break;
+          if (data === '[DONE]') { streamDone = true; break; }
           try {
             const json = JSON.parse(data);
             if (json.type === 'token') {
@@ -65,6 +69,7 @@ export default function BookDetailPage() {
             }
           } catch { }
         }
+        if (streamDone) break;
       }
     } catch {
       setMessages(m => [...m, { role: 'assistant', content: 'Có lỗi xảy ra, vui lòng thử lại.' }]);

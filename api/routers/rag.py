@@ -18,10 +18,10 @@ from models.schemas import RAGQueryRequest, RAGQueryResponse
 from services import ingestion, retrieval, rag_engine
 from services.metrics_registry import get_metrics_registry
 from services.sheets_logger import log_query as sheets_log
-from services.rag_engine import is_toc_query
+from services.rag_engine import is_toc_query, is_book_meta_query, detect_task_type
 
 router = APIRouter(prefix="/rag", tags=["RAG"])
-VALID_TASK_TYPES = {"qa", "explain", "summarize_chapter", "summarize_book", "suggest"}
+VALID_TASK_TYPES = {"qa", "explain", "summarize_chapter", "summarize_book", "suggest", "auto"}
 query_logger = logging.getLogger("rag.queries")
 
 # Giá USD / 1 token (gpt-4o-mini, táng 4/2026)
@@ -44,7 +44,10 @@ async def _get_validated_chunks(req: RAGQueryRequest):
             status_code=400,
             detail=f"task_type không hợp lệ. Chọn: {', '.join(VALID_TASK_TYPES)}"
         )
-    book = ingestion.get_book(req.book_id)
+    # Tự động nhận diện task type từ câu hỏi
+    if req.task_type == "auto":
+        req.task_type = detect_task_type(req.query)
+    book = ingestion.get_book(req.book_id, source=req.source)
     if not book:
         raise HTTPException(status_code=404, detail="Không tìm thấy sách")
     if book.get("status") != "ready":
@@ -53,17 +56,86 @@ async def _get_validated_chunks(req: RAGQueryRequest):
             detail=f"Sách chưa sẵn sàng (status: {book.get('status')})"
         )
 
-    # Tự động tăng top_k khi hỏi mục lục / TOC
+    # Resolve external_id → internal UUID (quan trọng!)
+    # req.book_id có thể là "7" (external), nhưng DB cần UUID nội bộ
+    internal_book_id = book["id"]
+    req.book_id = internal_book_id
+
+    # Tự động tăng top_k theo task type
     effective_top_k = req.top_k
     if is_toc_query(req.query):
         effective_top_k = max(effective_top_k or 5, 20)
+    elif req.task_type == "summarize_chapter":
+        effective_top_k = max(effective_top_k or 5, 15)
+    elif req.task_type == "summarize_book":
+        effective_top_k = max(effective_top_k or 5, 20)
+    else:
+        # Q&A: tối thiểu 8 (hybrid + keyword supplement sẽ thêm nữa)
+        effective_top_k = max(effective_top_k or 5, 8)
 
     try:
-        chunks = await retrieval.retrieve_chunks(
-            book_id=req.book_id,
-            query=req.query,
-            top_k=effective_top_k,
-        )
+        chunks = None
+        force_meta_supplement = is_book_meta_query(req.query)
+
+        # Khi hỏi mục lục: lấy trực tiếp các trang MỤC LỤC in sẵn trong sách
+        if not chunks and is_toc_query(req.query):
+            chunks = await retrieval.retrieve_toc_chunks(
+                book_id=internal_book_id,
+            )
+
+        # Khi tóm tắt phần/chương cụ thể: dùng section sampling + TOC context
+        if not chunks and req.task_type == "summarize_chapter":
+            section_num = retrieval.detect_section_reference(req.query)
+            if section_num is not None:
+                # Lấy TOC chunks để LLM biết danh sách đầy đủ các bài viết trong phần
+                toc_chunks = await retrieval.retrieve_toc_chunks(
+                    book_id=internal_book_id,
+                )
+                # Lấy nội dung phân tán
+                content_chunks = await retrieval.retrieve_chunks_for_section_summary(
+                    book_id=internal_book_id,
+                    section_number=section_num,
+                    max_chunks=30,
+                )
+                if content_chunks:
+                    # Ghép TOC (nếu có) + nội dung — TOC ở đầu để LLM thấy cấu trúc trước
+                    if toc_chunks:
+                        chunks = toc_chunks + content_chunks
+                    else:
+                        chunks = content_chunks
+
+        # Fallback: hybrid search thông thường
+        if not chunks:
+            chunks = await retrieval.retrieve_chunks(
+                book_id=internal_book_id,
+                query=req.query,
+                top_k=effective_top_k,
+            )
+
+            # Bổ sung context từ Lời giới thiệu/Lời NXB (trang 1-10)
+            if chunks and req.task_type == "qa":
+                intro_chunks = await retrieval.retrieve_book_meta_chunks(
+                    book_id=internal_book_id,
+                )
+                if intro_chunks:
+                    existing_ids = {c.id for c in chunks}
+                    if force_meta_supplement:
+                        # Câu hỏi đặc thù về metadata: thêm TẤT CẢ intro chunks
+                        new_intro = [c for c in intro_chunks if c.id not in existing_ids]
+                    else:
+                        # Q&A thường: CHỈ thêm intro chunks LIÊN QUAN (tránh noise)
+                        q_words = set(w for w in req.query.lower().split() if len(w) >= 3)
+                        new_intro = []
+                        for c in intro_chunks:
+                            if c.id in existing_ids:
+                                continue
+                            overlap = sum(1 for w in q_words if w in c.content.lower())
+                            if overlap >= 2:
+                                new_intro.append(c)
+                        new_intro = new_intro[:3]  # Max 3 cho Q&A thường
+                    if new_intro:
+                        chunks = new_intro + chunks
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi retrieval: {str(e)}")
     if not chunks:

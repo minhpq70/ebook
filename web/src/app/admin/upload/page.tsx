@@ -48,17 +48,17 @@ export default function UploadPage() {
       pollRef.current = setInterval(async () => {
         try {
           const book = await booksAPI.get(bookId);
-          if (book.status === 'ready') {
+          if (book.status === 'ready' || book.status === 'done') {
             clearInterval(pollRef.current!);
             setPhase('success');
             setMessage(`✅ Sách "${book.title}" đã sẵn sàng! (${book.total_pages || '?'} trang)`);
-          } else if (book.status === 'error') {
+          } else if (book.status === 'error' || book.status === 'failed') {
             clearInterval(pollRef.current!);
             setPhase('error');
             setMessage('Có lỗi xảy ra trong quá trình xử lý sách');
           }
         } catch { /* polling failures are silent */ }
-      }, 2000); // poll mỗi 2s
+      }, 3000); // poll mỗi 3s (giảm tải server)
     }
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [phase, bookId]);
@@ -234,54 +234,7 @@ export default function UploadPage() {
               )}
             </div>
 
-            {/* Metadata */}
-            <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <h3 style={{ fontWeight: 500, color: 'white' }}>Thông tin sách</h3>
-              {[
-                { key: 'title', label: 'Tiêu đề *', placeholder: 'Tên sách...', required: true },
-                { key: 'author', label: 'Tác giả', placeholder: 'Tên tác giả...' },
-              ].map(({ key, label, placeholder, required }) => (
-                <div key={key}>
-                  <label style={{ fontSize: '0.875rem', color: '#8890a4', display: 'block', marginBottom: '0.375rem' }}>{label}</label>
-                  <input className="input" placeholder={placeholder} required={required}
-                    value={form[key as keyof typeof form]}
-                    onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} />
-                </div>
-              ))}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                {[
-                  { key: 'publisher', label: 'Nhà xuất bản', placeholder: 'Tên NXB...' },
-                  { key: 'published_year', label: 'Năm XB', placeholder: 'Ví dụ: 2024' },
-                ].map(({ key, label, placeholder }) => (
-                  <div key={key}>
-                    <label style={{ fontSize: '0.875rem', color: '#8890a4', display: 'block', marginBottom: '0.375rem' }}>{label}</label>
-                    <input className="input" placeholder={placeholder}
-                      value={form[key as keyof typeof form]}
-                      onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} />
-                  </div>
-                ))}
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <label style={{ fontSize: '0.875rem', color: '#8890a4', display: 'block', marginBottom: '0.375rem' }}>Danh mục</label>
-                  <input className="input" placeholder="Ví dụ: Kinh tế, Pháp luật..." list="category-list"
-                    value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} />
-                  <datalist id="category-list">
-                    {categories.map(c => <option key={c.id} value={c.name} />)}
-                  </datalist>
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.875rem', color: '#8890a4', display: 'block', marginBottom: '0.375rem' }}>Khổ cỡ</label>
-                  <input className="input" placeholder="Ví dụ: 14x20cm"
-                    value={form.page_size} onChange={e => setForm(f => ({ ...f, page_size: e.target.value }))} />
-                </div>
-              </div>
-              <div>
-                <label style={{ fontSize: '0.875rem', color: '#8890a4', display: 'block', marginBottom: '0.375rem' }}>Mô tả</label>
-                <textarea className="input" rows={3} style={{ resize: 'none' }} placeholder="Mô tả ngắn..."
-                  value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
-              </div>
-            </div>
+
 
             {phase === 'error' && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', borderRadius: '0.75rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', padding: '0.75rem 1rem' }}>

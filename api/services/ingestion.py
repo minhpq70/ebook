@@ -55,7 +55,7 @@ async def get_ingestion_progress(book_id: str) -> dict | None:
 async def mark_book_queued(book_id: str, message: str = "Đang chờ worker xử lý") -> None:
     """Đánh dấu sách đang chờ trong queue thay vì đang xử lý trực tiếp."""
     supabase = get_supabase()
-    supabase.table("books").update({"status": "queued"}).eq("id", book_id).execute()
+    supabase.table("books").update({"status": "processing"}).eq("id", book_id).execute()
     await _update_ingestion_progress(
         book_id,
         status="queued",
@@ -102,13 +102,16 @@ async def create_book_record(
     safe_filename = _sanitize_filename(filename)
     file_path = f"pdfs/{safe_filename}"
 
-    supabase.storage.from_(STORAGE_BUCKET).upload(
-        path=file_path,
-        file=pdf_bytes,
-        file_options={"content-type": "application/pdf", "upsert": "true"}
+    # Upload file lên Storage (sync I/O → chạy trong thread pool để không block event loop)
+    await asyncio.to_thread(
+        supabase.storage.from_(STORAGE_BUCKET).upload,
+        file_path,
+        pdf_bytes,
+        {"content-type": "application/pdf", "upsert": "true"},
     )
 
-    book_result = supabase.table("books").insert({
+    # Insert book record (cũng sync I/O)
+    book_data = {
         "title": title,
         "author": author,
         "publisher": publisher,
@@ -120,7 +123,10 @@ async def create_book_record(
         "file_path": file_path,
         "file_size": len(pdf_bytes),
         "status": "processing",
-    }).execute()
+    }
+    book_result = await asyncio.to_thread(
+        lambda: supabase.table("books").insert(book_data).execute()
+    )
 
     return book_result.data[0]["id"]
 
@@ -187,7 +193,7 @@ async def run_ingestion_pipeline(book_id: str, pdf_bytes: bytes) -> None:
             stored_chunks += 1
 
         # Trích xuất ảnh bìa (cũng CPU-bound — render page thành image)
-        from .metadata_extractor import get_cover_image_bytes, generate_ai_summary
+        from .metadata_extractor import get_cover_image_bytes, generate_ai_summary, extract_metadata_from_pdf
         cover_bytes = await asyncio.to_thread(get_cover_image_bytes, pdf_bytes)
         cover_url = None
         if cover_bytes:
@@ -197,14 +203,11 @@ async def run_ingestion_pipeline(book_id: str, pdf_bytes: bytes) -> None:
                 file=cover_bytes,
                 file_options={"content-type": "image/jpeg", "upsert": "true"}
             )
-            cover_url = supabase.storage.from_("covers").get_public_url(cover_path)
-            if isinstance(cover_url, dict):
-                 cover_url = cover_url.get('publicURL', cover_url.get('publicUrl'))
-            if not cover_url:
-                cover_url = f"{supabase.supabase_url}/storage/v1/object/public/covers/{cover_path}"
+            cover_url = f"/api/v1/books/{book_id}/cover"
 
-        # Tạo AI summary
+        # Tạo AI summary và Metadata (Nhan đề, Tác giả)
         ai_summary = await generate_ai_summary(pdf_bytes)
+        ai_metadata = await extract_metadata_from_pdf(pdf_bytes)
 
         update_data = {
             "status": "ready",
@@ -214,6 +217,16 @@ async def run_ingestion_pipeline(book_id: str, pdf_bytes: bytes) -> None:
             update_data["cover_url"] = cover_url
         if ai_summary:
             update_data["ai_summary"] = ai_summary
+            
+        # Tự động điền Nhan đề và Tác giả nếu AI đọc được từ bìa
+        if ai_metadata.get("title") and len(ai_metadata["title"]) > 2:
+            update_data["title"] = ai_metadata["title"]
+        if ai_metadata.get("author"):
+            update_data["author"] = ai_metadata["author"]
+        if ai_metadata.get("publisher"):
+            update_data["publisher"] = ai_metadata["publisher"]
+        if ai_metadata.get("published_year"):
+            update_data["published_year"] = str(ai_metadata["published_year"])
 
         supabase.table("books").update(update_data).eq("id", book_id).execute()
         metrics.record_ingestion(
@@ -328,11 +341,41 @@ async def _store_chunks(
         await asyncio.sleep(0.05)  # nhỏ delay tránh rate limit
 
 
-def get_book(book_id: str) -> dict | None:
-    """Lấy metadata của sách."""
+def get_book(book_id: str, source: str | None = None) -> dict | None:
+    """
+    Lấy metadata của sách.
+    Hỗ trợ:
+      - UUID nội bộ
+      - external_id qua bảng book_external_ids (có thể kèm source)
+      - fallback: external_id cũ trong bảng books (backward compat)
+    """
     supabase = get_supabase()
-    result = supabase.table("books").select("*").eq("id", book_id).execute()
-    return result.data[0] if result.data else None
+
+    # 1. Tìm qua bảng mapping book_external_ids
+    try:
+        query = supabase.table("book_external_ids").select("book_id").eq("external_id", book_id)
+        if source:
+            query = query.eq("source_system", source)
+        res_map = query.limit(1).execute()
+        if res_map.data:
+            internal_id = res_map.data[0]["book_id"]
+            res = supabase.table("books").select("*").eq("id", internal_id).execute()
+            if res.data:
+                return res.data[0]
+    except Exception:
+        pass
+
+    # 2. Fallback: external_id cũ trong bảng books
+    res_ext = supabase.table("books").select("*").eq("external_id", book_id).execute()
+    if res_ext.data:
+        return res_ext.data[0]
+
+    # 3. Tìm theo UUID nội bộ
+    try:
+        res_id = supabase.table("books").select("*").eq("id", book_id).execute()
+        return res_id.data[0] if res_id.data else None
+    except Exception:
+        return None
 
 
 def list_books() -> list[dict]:

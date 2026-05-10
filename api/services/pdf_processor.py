@@ -54,10 +54,22 @@ def is_valid_vietnamese_text_optimized(text: str) -> bool:
     """
     Optimized check for valid Vietnamese text.
     Returns True if text contains valid Vietnamese characters and structure.
-    More strict validation for OCR quality assessment.
+    Also detects TCVN3/VnTime font misencoding (e.g. "haåt giöëng" instead of "hạt giống").
     """
     if not text or len(text.strip()) < 20:  # Require minimum length
         return False
+
+    # ── Detect TCVN3/VnTime misencoding ──────────────────────────
+    # Font cũ (VnTime, .VnArial...) khi PyMuPDF đọc thành Unicode sẽ ra
+    # nhiều ký tự Latin Extended mà tiếng Việt Unicode KHÔNG bao giờ dùng.
+    # Ví dụ: "haåt giöëng têm höìn" thay vì "hạt giống tâm hồn"
+    # Chỉ detect ký tự CHẮC CHẮN không phải tiếng Việt:
+    #   ä, å, ë, ñ, ö, û, ß, ð, þ, ø, æ, ç, ÿ
+    tcvn3_only_chars = re.findall(r'[äåëñöûßðþøæçÿÄÅËÑÖÛ]', text)
+    if len(tcvn3_only_chars) >= 2 and len(text) > 30:
+        tcvn3_ratio = len(tcvn3_only_chars) / len(text)
+        if tcvn3_ratio > 0.01:  # >1% ký tự lạ → chắc chắn encoding sai
+            return False
 
     # Check for Vietnamese characters (đ, ă, â, ê, ô, ư, ơ)
     vietnamese_chars = re.findall(r'[đăâêôươĐĂÂÊÔƯƠ]', text)

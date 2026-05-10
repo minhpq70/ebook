@@ -14,6 +14,9 @@ from io import BytesIO
 
 from PIL import Image
 
+import os
+os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
+
 logger = logging.getLogger("ebook.ocr")
 
 # ── Lazy-loaded globals ──────────────────────────────────────────────────────
@@ -31,8 +34,6 @@ def _get_paddle_ocr():
             _paddle_ocr = PaddleOCR(
                 lang="vi",
                 use_angle_cls=True,   # Tự xoay text nghiêng
-                show_log=False,
-                use_gpu=False,        # CPU-only (tương thích Render)
             )
             logger.info("PaddleOCR initialized (lang=vi, CPU)")
         except ImportError:

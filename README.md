@@ -6,7 +6,7 @@ Nền tảng xuất bản điện tử với Private RAG: AI chỉ nhận query 
 - **Frontend**: Next.js 14 (App Router + TypeScript + Tailwind)
 - **Backend**: FastAPI (Python)
 - **Vector DB**: Supabase (PostgreSQL + pgvector)
-- **AI**: OpenAI GPT-4o-mini + text-embedding-3-small
+- **AI**: Gemini 2.5 Flash + text-embedding-3-small (multi-model adapter)
 
 ## Cấu trúc
 
@@ -147,11 +147,12 @@ Trả lời + trích nguồn
 
 | Method | Path | Mô tả |
 |--------|------|-------|
-| POST | `/api/v1/books/upload` | Upload PDF + ingest |
+| POST | `/api/v1/books/upload` | Upload PDF (≤ 200MB) + ingest |
 | GET | `/api/v1/books` | Danh sách sách |
 | GET | `/api/v1/books/{id}` | Chi tiết sách |
 | DELETE | `/api/v1/books/{id}` | Xóa sách |
-| POST | `/api/v1/rag/query` | RAG query |
+| POST | `/api/v1/rag/query` | RAG query (blocking) |
+| POST | `/api/v1/rag/query/stream` | RAG query (SSE streaming) |
 
 ## Migration sang PostgreSQL self-hosted
 
@@ -160,7 +161,3 @@ Khi ready migrate khỏi Supabase:
 2. Thay `SUPABASE_URL` và `SUPABASE_SERVICE_KEY` bằng connection string PostgreSQL
 3. Thay `supabase_client.py` bằng `asyncpg` hoặc `psycopg2`
 4. Functions `hybrid_search` trong SQL giữ nguyên (tương thích)
-=======
-# ebook
-Khai thác ebook nhờ AI
->>>>>>> db00c2d1c230ad3b4b118cb3d2a5d66ae31e720c

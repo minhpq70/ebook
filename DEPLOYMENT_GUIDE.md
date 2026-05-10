@@ -146,7 +146,7 @@ Nếu chưa tách worker riêng, backend vẫn có thể chạy worker loop tron
 INGESTION_WORKER_ENABLED=true
 ```
 
-Nhưng cách này chỉ nên xem là giải pháp tạm hoặc cho môi trường nhỏ.
+> **⚠️ CẢNH BÁO:** Cách này sẽ gây **lỗi 502/504** khi ingestion chạy tác vụ nặng (OCR, embedding) vì block event loop. Chỉ dùng cho test nhanh, **KHÔNG dùng cho production**.
 
 ### Bước 5: Deploy Frontend trên Vercel
 
@@ -170,7 +170,7 @@ Ngoài các biến cũ, hệ thống hiện có thêm các biến quan trọng s
 ```env
 REDIS_URL=redis://localhost:6379
 INGESTION_QUEUE_NAME=queue:ingestion_jobs
-INGESTION_WORKER_ENABLED=true
+INGESTION_WORKER_ENABLED=false   # PHẢI là false cho production
 INGESTION_WORKER_CONCURRENCY=1
 INGESTION_WORKER_POLL_TIMEOUT=5
 ```
@@ -411,6 +411,25 @@ Hiện hệ thống phù hợp nhất với mô hình:
 - Queue cho ingestion jobs
 - Persist metrics snapshot
 
+### Triển khai trên VPS (PM2)
+
+Nếu tự host trên VPS thay vì Render, kiến trúc PM2:
+
+```bash
+# API — chỉ phục vụ HTTP, KHÔNG chạy worker
+pm2 start "venv/bin/uvicorn main:app --host 127.0.0.1 --port 8080" \
+    --name ebook-api --cwd /path/to/api
+
+# Worker — process riêng, xử lý ingestion nền
+pm2 start "venv/bin/python worker.py" \
+    --name ebook-worker --cwd /path/to/api
+
+# Frontend
+pm2 start "npm run start" --name ebook-web --cwd /path/to/web
+```
+
+> **Quan trọng:** Đảm bảo `INGESTION_WORKER_ENABLED=false` trong `api/.env` để API không chạy worker chung process.
+
 ---
 
 ## 3. Quản lý Admin mặc định
@@ -449,3 +468,10 @@ Bạn có thể thay đổi sau khi login vào hệ thống.
   - `/health`
   - `/api/v1/metrics/runtime`
   - soft/hard limit trong env
+
+- **Lỗi 502/504 Bad Gateway liên tục khi upload sách lớn**:
+  Worker ingestion đang chạy **chung process** với API → block event loop. Fix:
+  1. Set `INGESTION_WORKER_ENABLED=false` trong `api/.env`
+  2. Chạy worker riêng: `pm2 start "venv/bin/python worker.py" --name ebook-worker`
+  3. Restart API: `pm2 restart ebook-api`
+  4. Chi tiết xem mục 8 trong `TECHNICAL_OVERVIEW.md`

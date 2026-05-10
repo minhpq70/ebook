@@ -150,6 +150,33 @@ OPENAI_CHAT_MODEL=gpt-4o        # đổi từ gpt-4o-mini sang gpt-4o
 # KHÔNG đặt OPENAI_CHAT_BASE_URL
 ```
 
+### Kịch bản E: Dùng Model Local qua Proxy (vd: Qwen 3.5 với custom header `x-api-key`)
+
+Nếu bạn có một máy chủ local (ví dụ IP `192.168.50.150:11435`) được bọc qua một proxy yêu cầu xác thực bằng header `x-api-key`, hệ thống mặc định của OpenAI SDK sẽ không hỗ trợ truyền header này trực tiếp (nó dùng `Authorization: Bearer`). 
+
+**Bước 1: Chỉnh sửa `api/.env`:**
+```env
+OPENAI_CHAT_MODEL=qwen3.5:9b
+# Đổi đuôi /api/chat thành /v1 để sử dụng OpenAI Compatibility layer của Ollama/Proxy
+OPENAI_CHAT_BASE_URL=http://192.168.50.150:11435/v1
+OPENAI_CHAT_API_KEY=Tinhvan@2026
+```
+
+**Bước 2: Cập nhật code để gửi đúng header (nếu hệ thống chưa hỗ trợ `x-api-key`):**
+Cần sửa file `api/core/openai_client.py`, tìm đoạn tạo client (`_make_client`) và thêm logic truyền `default_headers={"x-api-key": api_key}` khi URL khớp với IP nội bộ hoặc thêm một provider cấu hình riêng.
+
+---
+
+### Kịch bản F: Chuyển lại về Gemini 2.5 Flash (Google AI Studio)
+
+Khi bạn muốn tắt mô hình Local và quay lại **Gemini 2.5 Flash**, chỉ cần cập nhật lại `api/.env` về trạng thái chuẩn như sau (không cần hoàn tác code `x-api-key` nếu bạn đã viết logic an toàn chỉ kích hoạt cho URL local):
+
+```env
+OPENAI_CHAT_MODEL=gemini-2.5-flash
+OPENAI_CHAT_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+OPENAI_CHAT_API_KEY=AIzaSy... (Điền lại API Key Google AI Studio của bạn)
+```
+
 ---
 
 ## 4. Cách chuyển đổi trên Render

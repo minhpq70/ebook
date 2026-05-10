@@ -25,3 +25,14 @@ service_account*.json
 
 # MacOS
 .DS_Store
+
+# Temp / local
+.tmp_venv/
+node_modules/
+package-lock.json
+
+# SSL Certificates
+*.crt
+
+# Skills (local Claude Code)
+skills/

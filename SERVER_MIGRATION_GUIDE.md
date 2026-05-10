@@ -9,7 +9,7 @@ Tài liệu chi tiết Step-by-Step để chuyển Ebook Platform từ Vercel/Re
 ## BƯỚC 0: Clone Mã Nguồn
 
 ```bash
-cd /var/www
+cd /home/tinhvan/apps
 git clone https://github.com/minhpq70/ebook.git ebook-platform
 cd ebook-platform
 ```
@@ -59,7 +59,7 @@ sudo docker compose up -d
 ## BƯỚC 3: Triển Khai Backend (FastAPI)
 
 ```bash
-cd /var/www/ebook-platform/api
+cd /home/tinhvan/apps/ebook-platform/api
 
 # Tạo môi trường ảo Python 3.12
 python3.12 -m venv venv
@@ -138,7 +138,7 @@ pm2 start "venv/bin/uvicorn main:app --host 127.0.0.1 --port 8080" --name "ebook
 ## BƯỚC 4: Triển Khai Frontend (Next.js)
 
 ```bash
-cd /var/www/ebook-platform/web
+cd /home/tinhvan/apps/ebook-platform/web
 
 cat <<EOF > .env.local
 NEXT_PUBLIC_API_URL=http://localhost:8080/api/v1
@@ -213,7 +213,7 @@ pm2 startup
 Sau khi deploy, kiểm tra OCR đã hoạt động:
 
 ```bash
-cd /var/www/ebook-platform/api
+cd /home/tinhvan/apps/ebook-platform/api
 source venv/bin/activate
 python3 -c "
 from services.ocr_engine import is_ocr_available

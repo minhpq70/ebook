@@ -21,8 +21,15 @@ router = APIRouter(prefix="/books", tags=["Books"])
 
 @router.post("/upload", response_model=IngestionStatus)
 async def upload_book(
-    upload_data: BookUploadRequest = Depends(),
     file: UploadFile = File(..., description="File PDF của sách"),
+    title: str = Form(...),
+    author: str | None = Form(None),
+    publisher: str | None = Form(None),
+    published_year: str | None = Form(None),
+    category: str | None = Form(None),
+    page_size: str | None = Form(None),
+    description: str | None = Form(None),
+    language: str = Form("vi"),
     _: dict = Depends(require_admin),
 ):
     """
@@ -57,7 +64,13 @@ async def upload_book(
 
     unique_filename = f"{uuid.uuid4()}_{file.filename}"
 
-    # Kích hoạt AI nếu có thông số trống
+    # Construct request model to trigger validators
+    upload_data = BookUploadRequest(
+        title=title, author=author, publisher=publisher, published_year=published_year,
+        category=category, page_size=page_size, description=description, language=language
+    )
+
+    # Lấy metadata từ form (không gọi AI ở đây — để worker xử lý nền)
     title = upload_data.title
     author = upload_data.author
     publisher = upload_data.publisher
@@ -66,19 +79,6 @@ async def upload_book(
     page_size = upload_data.page_size
     description = upload_data.description
     language = upload_data.language
-
-    is_default_title = (title == file.filename.replace('.pdf', '') or title == file.filename)
-    if is_default_title or not author or not publisher or not published_year:
-        ai_meta = await extract_metadata_from_pdf(pdf_bytes)
-        if ai_meta:
-            if is_default_title and ai_meta.get('title'):
-                title = ai_meta['title']
-            if not author and ai_meta.get('author'):
-                author = ai_meta['author']
-            if not publisher and ai_meta.get('publisher'):
-                publisher = ai_meta['publisher']
-            if not published_year and ai_meta.get('published_year'):
-                published_year = str(ai_meta['published_year'])
 
     # Tạo book record + upload file lên Storage trước (nhanh)
     try:
@@ -183,3 +183,22 @@ async def get_pdf_url(book_id: str):
         return {"url": url, "expires_in": 3600}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi tạo signed URL: {str(e)}")
+
+from fastapi import Response
+@router.get("/{book_id}/cover")
+async def get_cover(book_id: str):
+    """Lấy ảnh bìa sách."""
+    book = ingestion.get_book(book_id)
+    if not book:
+        raise HTTPException(status_code=404, detail="Không tìm thấy sách")
+    
+    try:
+        from core.supabase_client import get_supabase
+        supabase = get_supabase()
+        cover_path = f"{book_id}.jpeg"
+        cover_bytes = supabase.storage.from_("covers").download(cover_path)
+        if not cover_bytes:
+             raise HTTPException(status_code=404, detail="Không tìm thấy file ảnh")
+        return Response(content=cover_bytes, media_type="image/jpeg")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
